@@ -1,0 +1,12 @@
+.venv/
+.pytest_cache/
+dist/
+build/
+src/*.egg-info/
+
+__pycache__/
+*.pyc
+
+.punkrecords/
+
+*.json.tmp

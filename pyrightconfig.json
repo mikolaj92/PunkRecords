@@ -1,0 +1,15 @@
+{
+  "venvPath": ".",
+  "venv": ".venv",
+  "include": ["src", "tests"],
+  "exclude": [".venv"],
+  "executionEnvironments": [
+    {
+      "root": ".",
+      "extraPaths": [
+        "src",
+        "/Users/mikomac/Developer/OSS/PunkRecords/.venv/lib/python3.13/site-packages"
+      ]
+    }
+  ]
+}

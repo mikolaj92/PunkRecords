@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "punkrecords"
+version = "0.1.0"
+description = "PunkRecords multi-account OAuth manager and Hermes bridge for openai-codex"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi==0.135.2",
+  "uvicorn==0.42.0",
+]
+authors = [
+  { name = "Miko" }
+]
+keywords = ["hermes", "openai", "codex", "oauth", "cli"]
+
+[project.scripts]
+punkrecords = "hermes_codex_multi_auth.cli:main"
+hermes-codex-auth = "hermes_codex_multi_auth.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
