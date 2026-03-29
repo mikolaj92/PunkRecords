@@ -2,24 +2,33 @@ from __future__ import annotations
 
 import importlib
 import json
+import re
 import socket
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-models_module = importlib.import_module("hermes_codex_multi_auth.models")
-oauth_module = importlib.import_module("hermes_codex_multi_auth.oauth")
-proxy_module = importlib.import_module("hermes_codex_multi_auth.proxy")
-store_module = importlib.import_module("hermes_codex_multi_auth.store")
+models_module = importlib.import_module("punkrecords.models")
+oauth_module = importlib.import_module("punkrecords.oauth")
+proxy_module = importlib.import_module("punkrecords.proxy")
+providers_module = importlib.import_module("punkrecords.providers")
+settings_store_module = importlib.import_module("punkrecords.settings_store")
+stats_store_module = importlib.import_module("punkrecords.stats_store")
+store_module = importlib.import_module("punkrecords.store")
+mock_oauth_module = importlib.import_module("tests.mock_oauth_server")
 
 AccountRecord = models_module.AccountRecord
 AccountTokens = models_module.AccountTokens
 AccountRepository = store_module.AccountRepository
 OAuthError = oauth_module.OAuthError
-CodexProxyHandler = proxy_module.CodexProxyHandler
-CodexProxyServer = proxy_module.CodexProxyServer
+ProxyHandler = proxy_module.ProxyHandler
+ProxyServer = proxy_module.ProxyServer
+MockOAuthServer = mock_oauth_module.MockOAuthServer
+OAuthHandler = mock_oauth_module.OAuthHandler
+get_provider = providers_module.get_provider
 
 
 def _account(index: int, label: str) -> AccountRecord:
@@ -188,7 +197,7 @@ def test_proxy_healthz(monkeypatch, tmp_path):
     repo = AccountRepository()
     repo.upsert_account(_account(1, "work"), make_active=True)
 
-    server = CodexProxyServer(("127.0.0.1", _free_port()), CodexProxyHandler, repo)
+    server = ProxyServer(("127.0.0.1", _free_port()), ProxyHandler, repo)
     _start_server(server)
     try:
         with urllib.request.urlopen(f"http://127.0.0.1:{server.server_port}/healthz", timeout=5) as response:
@@ -206,13 +215,41 @@ def test_proxy_models_endpoint(monkeypatch, tmp_path):
     repo = AccountRepository()
     repo.upsert_account(_account(1, "work"), make_active=True)
 
-    server = CodexProxyServer(("127.0.0.1", _free_port()), CodexProxyHandler, repo)
+    server = ProxyServer(("127.0.0.1", _free_port()), ProxyHandler, repo)
     _start_server(server)
     try:
         with urllib.request.urlopen(f"http://127.0.0.1:{server.server_port}/v1/models", timeout=5) as response:
             payload = json.loads(response.read().decode())
         assert payload["object"] == "list"
         assert [item["id"] for item in payload["data"]] == ["gpt-5.4", "gpt-5.4-mini"]
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_proxy_openapi_docs_and_removed_dashboard(monkeypatch, tmp_path):
+    monkeypatch.setenv("PUNKRECORDS_HOME", str(tmp_path / "manager"))
+    repo = AccountRepository()
+    repo.upsert_account(_account(1, "work"), make_active=True)
+
+    server = ProxyServer(("127.0.0.1", _free_port()), ProxyHandler, repo)
+    _start_server(server)
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{server.server_port}/openapi.json", timeout=5) as response:
+            payload = json.loads(response.read().decode())
+        assert response.status == 200
+        assert payload["openapi"] == "3.1.0"
+        assert "/v1/responses" in payload["paths"]
+
+        with urllib.request.urlopen(f"http://127.0.0.1:{server.server_port}/docs", timeout=5) as response:
+            html = response.read().decode()
+        assert "Swagger UI" in html
+
+        request = urllib.request.Request(f"http://127.0.0.1:{server.server_port}/_proxy/dashboard", method="GET")
+        try:
+            urllib.request.urlopen(request, timeout=5)
+        except urllib.error.HTTPError as exc:
+            assert exc.code == 404
     finally:
         server.shutdown()
         server.server_close()
@@ -225,10 +262,10 @@ def test_proxy_embeddings_and_stats(monkeypatch, tmp_path):
 
     upstream = ThreadingHTTPServer(("127.0.0.1", _free_port()), SuccessUpstreamHandler)
     _start_server(upstream)
-    monkeypatch.setenv("HERMES_CODEX_PROXY_UPSTREAM_BASE", f"http://127.0.0.1:{upstream.server_port}")
-    monkeypatch.setattr(proxy_module, "maybe_refresh_account", lambda account: account)
+    monkeypatch.setenv("PUNKRECORDS_OPENAI_CODEX_PROXY_UPSTREAM_BASE", f"http://127.0.0.1:{upstream.server_port}")
+    monkeypatch.setattr(providers_module.require_auth_provider(get_provider("openai-codex")), "maybe_refresh_account", lambda account: account)
 
-    proxy = CodexProxyServer(("127.0.0.1", _free_port()), CodexProxyHandler, repo)
+    proxy = ProxyServer(("127.0.0.1", _free_port()), ProxyHandler, repo)
     _start_server(proxy)
     try:
         request = urllib.request.Request(
@@ -264,10 +301,10 @@ def test_proxy_embeddings_failover_to_second_account(monkeypatch, tmp_path):
 
     upstream = ThreadingHTTPServer(("127.0.0.1", _free_port()), EmbeddingsFailoverHandler)
     _start_server(upstream)
-    monkeypatch.setenv("HERMES_CODEX_PROXY_UPSTREAM_BASE", f"http://127.0.0.1:{upstream.server_port}")
-    monkeypatch.setattr(proxy_module, "maybe_refresh_account", lambda account: account)
+    monkeypatch.setenv("PUNKRECORDS_OPENAI_CODEX_PROXY_UPSTREAM_BASE", f"http://127.0.0.1:{upstream.server_port}")
+    monkeypatch.setattr(providers_module.require_auth_provider(get_provider("openai-codex")), "maybe_refresh_account", lambda account: account)
 
-    proxy = CodexProxyServer(("127.0.0.1", _free_port()), CodexProxyHandler, repo)
+    proxy = ProxyServer(("127.0.0.1", _free_port()), ProxyHandler, repo)
     _start_server(proxy)
     try:
         request = urllib.request.Request(
@@ -292,7 +329,8 @@ def test_proxy_embeddings_failover_to_second_account(monkeypatch, tmp_path):
         with urllib.request.urlopen(f"http://127.0.0.1:{proxy.server_port}/_proxy/stats/summary", timeout=5) as response:
             stats = json.loads(response.read().decode())
         assert stats["request_count"] == 1
-        assert stats["by_account"]["acct-2"] == 1
+        assert stats["by_account"]["openai-codex:acct-2"] == 1
+        assert stats["by_provider_account"]["openai-codex:acct-2"] == 1
     finally:
         proxy.shutdown()
         proxy.server_close()
@@ -305,7 +343,7 @@ def test_proxy_stats_summary_contract(monkeypatch, tmp_path):
     repo = AccountRepository()
     repo.upsert_account(_account(1, "work"), make_active=True)
 
-    server = CodexProxyServer(("127.0.0.1", _free_port()), CodexProxyHandler, repo)
+    server = ProxyServer(("127.0.0.1", _free_port()), ProxyHandler, repo)
     _start_server(server)
     try:
         with urllib.request.urlopen(f"http://127.0.0.1:{server.server_port}/_proxy/stats/summary", timeout=5) as response:
@@ -319,6 +357,7 @@ def test_proxy_stats_summary_contract(monkeypatch, tmp_path):
             "total_tokens": 0,
             "by_endpoint": {},
             "by_account": {},
+            "by_provider_account": {},
             "updated_at": None,
         }
     finally:
@@ -333,7 +372,7 @@ def test_proxy_admin_state_and_accounts(monkeypatch, tmp_path):
     repo.upsert_account(_account(2, "backup"), make_active=False)
     repo.mark_proxy_failure("acct-2", error="deactivated_workspace", cooldown_seconds=300)
 
-    server = CodexProxyServer(("127.0.0.1", _free_port()), CodexProxyHandler, repo)
+    server = ProxyServer(("127.0.0.1", _free_port()), ProxyHandler, repo)
     _start_server(server)
     try:
         with urllib.request.urlopen(f"http://127.0.0.1:{server.server_port}/_proxy/admin/state", timeout=5) as response:
@@ -366,10 +405,10 @@ def test_proxy_admin_requests_and_settings(monkeypatch, tmp_path):
 
     upstream = ThreadingHTTPServer(("127.0.0.1", _free_port()), SuccessUpstreamHandler)
     _start_server(upstream)
-    monkeypatch.setenv("HERMES_CODEX_PROXY_UPSTREAM_BASE", f"http://127.0.0.1:{upstream.server_port}")
-    monkeypatch.setattr(proxy_module, "maybe_refresh_account", lambda account: account)
+    monkeypatch.setenv("PUNKRECORDS_OPENAI_CODEX_PROXY_UPSTREAM_BASE", f"http://127.0.0.1:{upstream.server_port}")
+    monkeypatch.setattr(providers_module.require_auth_provider(get_provider("openai-codex")), "maybe_refresh_account", lambda account: account)
 
-    server = CodexProxyServer(("127.0.0.1", _free_port()), CodexProxyHandler, repo)
+    server = ProxyServer(("127.0.0.1", _free_port()), ProxyHandler, repo)
     _start_server(server)
     try:
         request = urllib.request.Request(
@@ -392,14 +431,13 @@ def test_proxy_admin_requests_and_settings(monkeypatch, tmp_path):
 
         update = urllib.request.Request(
             f"http://127.0.0.1:{server.server_port}/_proxy/admin/settings",
-            data=json.dumps({"proxy": {"port": 5001}, "dashboard": {"enabled": True}}).encode(),
+            data=json.dumps({"proxy": {"port": 5001}}).encode(),
             headers={"Content-Type": "application/json"},
             method="PATCH",
         )
         with urllib.request.urlopen(update, timeout=5) as response:
             updated = json.loads(response.read().decode())
         assert updated["proxy"]["port"] == 5001
-        assert updated["dashboard"]["enabled"] is True
 
         invalid = urllib.request.Request(
             f"http://127.0.0.1:{server.server_port}/_proxy/admin/settings",
@@ -435,11 +473,11 @@ def test_proxy_admin_requests_and_settings(monkeypatch, tmp_path):
 
 def test_proxy_admin_auth_token(monkeypatch, tmp_path):
     monkeypatch.setenv("PUNKRECORDS_HOME", str(tmp_path / "manager"))
-    monkeypatch.setenv("HERMES_CODEX_ADMIN_TOKEN", "secret-token")
+    monkeypatch.setenv("PUNKRECORDS_ADMIN_TOKEN", "secret-token")
     repo = AccountRepository()
     repo.upsert_account(_account(1, "work"), make_active=True)
 
-    server = CodexProxyServer(("127.0.0.1", _free_port()), CodexProxyHandler, repo)
+    server = ProxyServer(("127.0.0.1", _free_port()), ProxyHandler, repo)
     _start_server(server)
     try:
         try:
@@ -467,7 +505,7 @@ def test_proxy_error_envelope_and_method_handling(monkeypatch, tmp_path):
     repo = AccountRepository()
     repo.upsert_account(_account(1, "work"), make_active=True)
 
-    server = CodexProxyServer(("127.0.0.1", _free_port()), CodexProxyHandler, repo)
+    server = ProxyServer(("127.0.0.1", _free_port()), ProxyHandler, repo)
     _start_server(server)
     try:
         bad_json_request = urllib.request.Request(
@@ -503,9 +541,9 @@ def test_proxy_refresh_failure_returns_controlled_error(monkeypatch, tmp_path):
     repo = AccountRepository()
     repo.upsert_account(_account(1, "work"), make_active=True)
 
-    monkeypatch.setattr(proxy_module, "maybe_refresh_account", lambda account: (_ for _ in ()).throw(OAuthError("refresh failed")))
+    monkeypatch.setattr(providers_module.require_auth_provider(get_provider("openai-codex")), "maybe_refresh_account", lambda account: (_ for _ in ()).throw(OAuthError("refresh failed")))
 
-    server = CodexProxyServer(("127.0.0.1", _free_port()), CodexProxyHandler, repo)
+    server = ProxyServer(("127.0.0.1", _free_port()), ProxyHandler, repo)
     _start_server(server)
     try:
         request = urllib.request.Request(
@@ -534,10 +572,10 @@ def test_proxy_failover_to_second_account(monkeypatch, tmp_path):
     upstream = ThreadingHTTPServer(("127.0.0.1", _free_port()), FakeUpstreamHandler)
     _start_server(upstream)
 
-    monkeypatch.setenv("HERMES_CODEX_PROXY_UPSTREAM_URL", f"http://127.0.0.1:{upstream.server_port}/responses")
-    monkeypatch.setattr(proxy_module, "maybe_refresh_account", lambda account: account)
+    monkeypatch.setenv("PUNKRECORDS_OPENAI_CODEX_PROXY_UPSTREAM_URL", f"http://127.0.0.1:{upstream.server_port}/responses")
+    monkeypatch.setattr(providers_module.require_auth_provider(get_provider("openai-codex")), "maybe_refresh_account", lambda account: account)
 
-    proxy = CodexProxyServer(("127.0.0.1", _free_port()), CodexProxyHandler, repo)
+    proxy = ProxyServer(("127.0.0.1", _free_port()), ProxyHandler, repo)
     _start_server(proxy)
     try:
         request = urllib.request.Request(
@@ -572,16 +610,19 @@ def test_proxy_persists_refreshed_tokens(monkeypatch, tmp_path):
 
     upstream = ThreadingHTTPServer(("127.0.0.1", _free_port()), SuccessUpstreamHandler)
     _start_server(upstream)
-    monkeypatch.setenv("HERMES_CODEX_PROXY_UPSTREAM_URL", f"http://127.0.0.1:{upstream.server_port}/responses")
+    monkeypatch.setenv("PUNKRECORDS_OPENAI_CODEX_PROXY_UPSTREAM_URL", f"http://127.0.0.1:{upstream.server_port}/responses")
 
     def fake_refresh(account):
-        account.tokens.access_token = "rotated-token"
-        account.tokens.refresh_token = "rotated-refresh"
+        account.tokens = models_module.AccountTokens(
+            access_token="rotated-token",
+            refresh_token="rotated-refresh",
+            account_id=account.account_id,
+        )
         return account
 
-    monkeypatch.setattr(proxy_module, "maybe_refresh_account", fake_refresh)
+    monkeypatch.setattr(providers_module.require_auth_provider(get_provider("openai-codex")), "maybe_refresh_account", fake_refresh)
 
-    proxy = CodexProxyServer(("127.0.0.1", _free_port()), CodexProxyHandler, repo)
+    proxy = ProxyServer(("127.0.0.1", _free_port()), ProxyHandler, repo)
     _start_server(proxy)
     try:
         request = urllib.request.Request(
@@ -612,10 +653,10 @@ def test_proxy_responses_non_stream_and_stats(monkeypatch, tmp_path):
 
     upstream = ThreadingHTTPServer(("127.0.0.1", _free_port()), SuccessUpstreamHandler)
     _start_server(upstream)
-    monkeypatch.setenv("HERMES_CODEX_PROXY_UPSTREAM_BASE", f"http://127.0.0.1:{upstream.server_port}")
-    monkeypatch.setattr(proxy_module, "maybe_refresh_account", lambda account: account)
+    monkeypatch.setenv("PUNKRECORDS_OPENAI_CODEX_PROXY_UPSTREAM_BASE", f"http://127.0.0.1:{upstream.server_port}")
+    monkeypatch.setattr(providers_module.require_auth_provider(get_provider("openai-codex")), "maybe_refresh_account", lambda account: account)
 
-    proxy = CodexProxyServer(("127.0.0.1", _free_port()), CodexProxyHandler, repo)
+    proxy = ProxyServer(("127.0.0.1", _free_port()), ProxyHandler, repo)
     _start_server(proxy)
     try:
         request = urllib.request.Request(
@@ -649,10 +690,10 @@ def test_proxy_chat_completions_and_stats(monkeypatch, tmp_path):
 
     upstream = ThreadingHTTPServer(("127.0.0.1", _free_port()), SuccessUpstreamHandler)
     _start_server(upstream)
-    monkeypatch.setenv("HERMES_CODEX_PROXY_UPSTREAM_BASE", f"http://127.0.0.1:{upstream.server_port}")
-    monkeypatch.setattr(proxy_module, "maybe_refresh_account", lambda account: account)
+    monkeypatch.setenv("PUNKRECORDS_OPENAI_CODEX_PROXY_UPSTREAM_BASE", f"http://127.0.0.1:{upstream.server_port}")
+    monkeypatch.setattr(providers_module.require_auth_provider(get_provider("openai-codex")), "maybe_refresh_account", lambda account: account)
 
-    proxy = CodexProxyServer(("127.0.0.1", _free_port()), CodexProxyHandler, repo)
+    proxy = ProxyServer(("127.0.0.1", _free_port()), ProxyHandler, repo)
     _start_server(proxy)
     try:
         request = urllib.request.Request(
@@ -686,10 +727,10 @@ def test_proxy_streaming_passthrough_and_stats(monkeypatch, tmp_path):
 
     upstream = ThreadingHTTPServer(("127.0.0.1", _free_port()), StreamingUpstreamHandler)
     _start_server(upstream)
-    monkeypatch.setenv("HERMES_CODEX_PROXY_UPSTREAM_BASE", f"http://127.0.0.1:{upstream.server_port}")
-    monkeypatch.setattr(proxy_module, "maybe_refresh_account", lambda account: account)
+    monkeypatch.setenv("PUNKRECORDS_OPENAI_CODEX_PROXY_UPSTREAM_BASE", f"http://127.0.0.1:{upstream.server_port}")
+    monkeypatch.setattr(providers_module.require_auth_provider(get_provider("openai-codex")), "maybe_refresh_account", lambda account: account)
 
-    proxy = CodexProxyServer(("127.0.0.1", _free_port()), CodexProxyHandler, repo)
+    proxy = ProxyServer(("127.0.0.1", _free_port()), ProxyHandler, repo)
     _start_server(proxy)
     try:
         request = urllib.request.Request(
@@ -726,10 +767,10 @@ def test_proxy_responses_streaming_passthrough_and_stats(monkeypatch, tmp_path):
 
     upstream = ThreadingHTTPServer(("127.0.0.1", _free_port()), StreamingUpstreamHandler)
     _start_server(upstream)
-    monkeypatch.setenv("HERMES_CODEX_PROXY_UPSTREAM_BASE", f"http://127.0.0.1:{upstream.server_port}")
-    monkeypatch.setattr(proxy_module, "maybe_refresh_account", lambda account: account)
+    monkeypatch.setenv("PUNKRECORDS_OPENAI_CODEX_PROXY_UPSTREAM_BASE", f"http://127.0.0.1:{upstream.server_port}")
+    monkeypatch.setattr(providers_module.require_auth_provider(get_provider("openai-codex")), "maybe_refresh_account", lambda account: account)
 
-    proxy = CodexProxyServer(("127.0.0.1", _free_port()), CodexProxyHandler, repo)
+    proxy = ProxyServer(("127.0.0.1", _free_port()), ProxyHandler, repo)
     _start_server(proxy)
     try:
         request = urllib.request.Request(
