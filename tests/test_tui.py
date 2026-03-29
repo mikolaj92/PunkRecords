@@ -3,9 +3,9 @@ from __future__ import annotations
 import curses
 import importlib
 
-models_module = importlib.import_module("hermes_codex_multi_auth.models")
-store_module = importlib.import_module("hermes_codex_multi_auth.store")
-tui_module = importlib.import_module("hermes_codex_multi_auth.tui")
+models_module = importlib.import_module("punkrecords.models")
+store_module = importlib.import_module("punkrecords.store")
+tui_module = importlib.import_module("punkrecords.tui")
 
 AccountRecord = models_module.AccountRecord
 AccountTokens = models_module.AccountTokens
