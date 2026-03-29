@@ -10,3 +10,4 @@ __pycache__/
 .punkrecords/
 
 *.json.tmp
+.opencode/
