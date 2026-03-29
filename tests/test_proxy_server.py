@@ -689,7 +689,9 @@ def test_proxy_chat_completions_and_stats(monkeypatch, tmp_path):
         )
         with urllib.request.urlopen(request, timeout=5) as response:
             payload = json.loads(response.read().decode())
-        assert payload["usage"] == {"input_tokens": 12, "output_tokens": 8, "total_tokens": 20}
+        assert payload["object"] == "chat.completion"
+        assert payload["choices"][0]["message"]["role"] == "assistant"
+        assert payload["usage"] == {"prompt_tokens": 12, "completion_tokens": 8, "total_tokens": 20}
 
         with urllib.request.urlopen(f"http://127.0.0.1:{proxy.server_port}/_proxy/stats/summary", timeout=5) as response:
             stats = json.loads(response.read().decode())

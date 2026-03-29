@@ -162,6 +162,22 @@ class ProxyServer:
 ProxyHandler = object
 
 
+def _convert_response_if_needed(local_path: str, body: bytes) -> bytes:
+    if local_path != "/v1/chat/completions":
+        return body
+    try:
+        payload = json.loads(body.decode())
+    except Exception:
+        return body
+    if not isinstance(payload, dict):
+        return body
+    if "choices" in payload or "error" in payload:
+        return body
+    from punkrecords.providers.openai_codex import responses_api_to_chat_completions
+    converted = responses_api_to_chat_completions(payload)
+    return json.dumps(converted).encode()
+
+
 def _forward_request(local_path: str, account: Any, payload: dict[str, Any], idempotency_key: str) -> ProxyResult | StreamProxyResult:
     provider = require_proxy_provider(get_account_provider(account))
     stream = provider.is_streaming_request(payload)
@@ -176,6 +192,7 @@ def _forward_request(local_path: str, account: Any, payload: dict[str, Any], ide
 
         body = response.read()
         response.close()
+        body = _convert_response_if_needed(local_path, body)
         usage = provider.proxy_extract_usage_from_body(body, local_path)
         return ProxyResult(response.status, body, headers, account.provider, stream=False, usage=usage)
     except urllib.error.HTTPError as exc:

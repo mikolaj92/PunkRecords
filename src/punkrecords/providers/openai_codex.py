@@ -479,6 +479,43 @@ def codex_models_payload() -> dict[str, Any]:
     }
 
 
+def responses_api_to_chat_completions(payload: dict[str, Any]) -> dict[str, Any]:
+    output = payload.get("output", [])
+    message_content = ""
+    tool_calls = None
+    for item in output if isinstance(output, list) else []:
+        item_type = item.get("type") if isinstance(item, dict) else None
+        if item_type == "message":
+            for part in item.get("content", []):
+                if isinstance(part, dict) and part.get("type") in ("output_text", "text"):
+                    message_content += part.get("text", "")
+        elif item_type == "function_call":
+            if tool_calls is None:
+                tool_calls = []
+            tool_calls.append({
+                "id": item.get("call_id", item.get("id", "")),
+                "type": "function",
+                "function": {"name": item.get("name", ""), "arguments": item.get("arguments", "")},
+            })
+    usage = payload.get("usage", {})
+    return {
+        "id": payload.get("id", "chatcmpl-responses-proxy"),
+        "object": "chat.completion",
+        "created": payload.get("created_at", 0),
+        "model": payload.get("model", ""),
+        "choices": [{
+            "index": 0,
+            "message": {"role": "assistant", "content": message_content or None, "tool_calls": tool_calls},
+            "finish_reason": "tool_calls" if tool_calls else "stop",
+        }],
+        "usage": {
+            "prompt_tokens": usage.get("input_tokens", 0),
+            "completion_tokens": usage.get("output_tokens", 0),
+            "total_tokens": (usage.get("input_tokens", 0) + usage.get("output_tokens", 0)),
+        },
+    }
+
+
 def chat_completions_to_responses_api(payload: dict[str, Any]) -> dict[str, Any]:
     messages = payload.get("messages", [])
     instructions = None
