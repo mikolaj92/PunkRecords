@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "punkrecords"
 version = "0.1.0"
-description = "PunkRecords multi-account OAuth manager and Hermes bridge for openai-codex"
+description = "PunkRecords plugin-based multi-account OAuth proxy runtime"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -15,11 +15,10 @@ dependencies = [
 authors = [
   { name = "Miko" }
 ]
-keywords = ["hermes", "openai", "codex", "oauth", "cli"]
+keywords = ["proxy", "openai-compatible", "oauth", "providers", "cli"]
 
 [project.scripts]
-punkrecords = "hermes_codex_multi_auth.cli:main"
-hermes-codex-auth = "hermes_codex_multi_auth.cli:main"
+punkrecords = "punkrecords.cli:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
