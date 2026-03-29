@@ -122,15 +122,7 @@ class SuccessUpstreamHandler(BaseHTTPRequestHandler):
         return
 
     def do_POST(self) -> None:  # noqa: N802
-        if self.path == "/chat/completions":
-            payload = {
-                "id": "chatcmpl-1",
-                "object": "chat.completion",
-                "choices": [{"index": 0, "message": {"role": "assistant", "content": "hello"}, "finish_reason": "stop"}],
-                "usage": {"prompt_tokens": 11, "completion_tokens": 7, "total_tokens": 18},
-            }
-            body = json.dumps(payload).encode()
-        elif self.path == "/embeddings":
+        if self.path == "/embeddings":
             payload = {
                 "object": "list",
                 "data": [{"object": "embedding", "index": 0, "embedding": [0.1, 0.2, 0.3]}],
@@ -152,21 +144,14 @@ class StreamingUpstreamHandler(BaseHTTPRequestHandler):
         return
 
     def do_POST(self) -> None:  # noqa: N802
-        if self.path == "/chat/completions":
-            body = (
-                'data: {"id":"chatcmpl-1","choices":[{"delta":{"content":"Hel"},"index":0}],"usage":null}\n\n'
-                'data: {"id":"chatcmpl-1","choices":[],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}\n\n'
-                'data: [DONE]\n\n'
-            ).encode()
-        else:
-            body = (
-                'event: response.created\n'
-                'data: {"type":"response.created"}\n\n'
-                'event: response.output_text.delta\n'
-                'data: {"type":"response.output_text.delta","delta":"Hel"}\n\n'
-                'event: response.completed\n'
-                'data: {"type":"response.completed","response":{"usage":{"input_tokens":9,"output_tokens":4,"total_tokens":13}}}\n\n'
-            ).encode()
+        body = (
+            'event: response.created\n'
+            'data: {"type":"response.created"}\n\n'
+            'event: response.output_text.delta\n'
+            'data: {"type":"response.output_text.delta","delta":"Hel"}\n\n'
+            'event: response.completed\n'
+            'data: {"type":"response.completed","response":{"usage":{"input_tokens":9,"output_tokens":4,"total_tokens":13}}}\n\n'
+        ).encode()
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-cache")
@@ -704,14 +689,14 @@ def test_proxy_chat_completions_and_stats(monkeypatch, tmp_path):
         )
         with urllib.request.urlopen(request, timeout=5) as response:
             payload = json.loads(response.read().decode())
-        assert payload["usage"] == {"prompt_tokens": 11, "completion_tokens": 7, "total_tokens": 18}
+        assert payload["usage"] == {"input_tokens": 12, "output_tokens": 8, "total_tokens": 20}
 
         with urllib.request.urlopen(f"http://127.0.0.1:{proxy.server_port}/_proxy/stats/summary", timeout=5) as response:
             stats = json.loads(response.read().decode())
         assert stats["request_count"] == 1
-        assert stats["input_tokens"] == 11
-        assert stats["output_tokens"] == 7
-        assert stats["total_tokens"] == 18
+        assert stats["input_tokens"] == 12
+        assert stats["output_tokens"] == 8
+        assert stats["total_tokens"] == 20
         assert stats["by_endpoint"]["/v1/chat/completions"] == 1
     finally:
         proxy.shutdown()
@@ -744,15 +729,15 @@ def test_proxy_streaming_passthrough_and_stats(monkeypatch, tmp_path):
             content_type = response.headers.get("Content-Type")
 
         assert content_type == "text/event-stream"
-        assert 'data: {"id":"chatcmpl-1","choices":[{"delta":{"content":"Hel"},"index":0}],"usage":null}' in body
-        assert 'data: [DONE]' in body
+        assert 'event: response.output_text.delta' in body
+        assert 'event: response.completed' in body
 
         with urllib.request.urlopen(f"http://127.0.0.1:{proxy.server_port}/_proxy/stats/summary", timeout=5) as response:
             stats = json.loads(response.read().decode())
         assert stats["request_count"] == 1
-        assert stats["input_tokens"] == 10
-        assert stats["output_tokens"] == 5
-        assert stats["total_tokens"] == 15
+        assert stats["input_tokens"] == 9
+        assert stats["output_tokens"] == 4
+        assert stats["total_tokens"] == 13
     finally:
         proxy.shutdown()
         proxy.server_close()

@@ -34,7 +34,7 @@ DEFAULT_HEADERS = {
 }
 ROUTE_MAP = {
     "/v1/responses": "/responses",
-    "/v1/chat/completions": "/chat/completions",
+    "/v1/chat/completions": "/responses",
     "/v1/embeddings": "/embeddings",
 }
 
@@ -258,32 +258,27 @@ def proxy_upstream_url(local_path: str) -> str:
 
 
 def proxy_extract_usage(payload: dict[str, Any], local_path: str) -> UsageSummary:
+    usage = payload.get("usage") if isinstance(payload, dict) else None
+    if not isinstance(usage, dict):
+        return {"input_tokens": None, "output_tokens": None, "total_tokens": None}
+
     if local_path == "/v1/embeddings":
-        usage = payload.get("usage") if isinstance(payload, dict) else None
-        if not isinstance(usage, dict):
-            return {"input_tokens": None, "output_tokens": None, "total_tokens": None}
         return {
             "input_tokens": int(usage["prompt_tokens"]) if isinstance(usage.get("prompt_tokens"), int) else None,
             "output_tokens": 0,
             "total_tokens": int(usage["total_tokens"]) if isinstance(usage.get("total_tokens"), int) else None,
         }
 
-    if local_path == "/v1/chat/completions":
-        usage = payload.get("usage") if isinstance(payload, dict) else None
-        if not isinstance(usage, dict):
-            return {"input_tokens": None, "output_tokens": None, "total_tokens": None}
+    if isinstance(usage.get("input_tokens"), int):
         return {
-            "input_tokens": int(usage["prompt_tokens"]) if isinstance(usage.get("prompt_tokens"), int) else None,
-            "output_tokens": int(usage["completion_tokens"]) if isinstance(usage.get("completion_tokens"), int) else None,
+            "input_tokens": usage["input_tokens"],
+            "output_tokens": int(usage["output_tokens"]) if isinstance(usage.get("output_tokens"), int) else None,
             "total_tokens": int(usage["total_tokens"]) if isinstance(usage.get("total_tokens"), int) else None,
         }
 
-    usage = payload.get("usage") if isinstance(payload, dict) else None
-    if not isinstance(usage, dict):
-        return {"input_tokens": None, "output_tokens": None, "total_tokens": None}
     return {
-        "input_tokens": int(usage["input_tokens"]) if isinstance(usage.get("input_tokens"), int) else None,
-        "output_tokens": int(usage["output_tokens"]) if isinstance(usage.get("output_tokens"), int) else None,
+        "input_tokens": int(usage["prompt_tokens"]) if isinstance(usage.get("prompt_tokens"), int) else None,
+        "output_tokens": int(usage["completion_tokens"]) if isinstance(usage.get("completion_tokens"), int) else None,
         "total_tokens": int(usage["total_tokens"]) if isinstance(usage.get("total_tokens"), int) else None,
     }
 
@@ -468,20 +463,10 @@ class OpenAICodexStreamUsageTracker:
         except json.JSONDecodeError:
             return
 
-        if self.local_path == "/v1/chat/completions":
-            usage = payload.get("usage") if isinstance(payload, dict) else None
-            if isinstance(usage, dict):
-                self.usage = {
-                    "input_tokens": int(usage["prompt_tokens"]) if isinstance(usage.get("prompt_tokens"), int) else None,
-                    "output_tokens": int(usage["completion_tokens"]) if isinstance(usage.get("completion_tokens"), int) else None,
-                    "total_tokens": int(usage["total_tokens"]) if isinstance(usage.get("total_tokens"), int) else None,
-                }
-            return
-
         if event_name == "response.completed" and isinstance(payload, dict):
             response = payload.get("response")
             if isinstance(response, dict):
-                self.usage = proxy_extract_usage(response, "/v1/responses")
+                self.usage = proxy_extract_usage(response, self.local_path)
 
 
 def codex_models_payload() -> dict[str, Any]:
@@ -492,6 +477,52 @@ def codex_models_payload() -> dict[str, Any]:
             {"id": "gpt-5.4-mini", "object": "model", "created": 1743091200, "owned_by": "openai"},
         ],
     }
+
+
+def chat_completions_to_responses_api(payload: dict[str, Any]) -> dict[str, Any]:
+    messages = payload.get("messages", [])
+    instructions = None
+    input_messages = []
+
+    for msg in messages:
+        role = msg.get("role", "")
+        content = msg.get("content", "")
+
+        if role == "system":
+            if instructions is None:
+                instructions = content if isinstance(content, str) else ""
+            continue
+
+        if role in ("user", "assistant", "developer"):
+            input_messages.append({
+                "role": role,
+                "content": content if isinstance(content, str) else "",
+            })
+
+    result: dict[str, Any] = {
+        "model": payload.get("model", ""),
+        "input": input_messages,
+        "stream": payload.get("stream", False),
+        "store": False,
+    }
+
+    if instructions:
+        result["instructions"] = instructions
+
+    if payload.get("tools"):
+        result["tools"] = [
+            {
+                "type": "function",
+                "name": t.get("function", {}).get("name", ""),
+                "description": t.get("function", {}).get("description", ""),
+                "parameters": t.get("function", {}).get("parameters"),
+            }
+            for t in payload.get("tools", [])
+        ]
+        if payload.get("tool_choice"):
+            result["tool_choice"] = payload["tool_choice"]
+
+    return result
 
 
 def classify_codex_status(status_code: int, body: bytes) -> tuple[bool, int]:
@@ -718,6 +749,8 @@ class OpenAICodexProvider:
                     **DEFAULT_HEADERS,
                     "Authorization": f"Bearer {refreshed_tokens.access_token}",
                     "ChatGPT-Account-Id": refreshed_tokens.account_id or refreshed_account.account_id,
+                    "OpenAI-Beta": "responses=v1",
+                    "OpenAI-Originator": "codex",
                 },
                 method="GET",
             )
@@ -790,7 +823,8 @@ class OpenAICodexProvider:
         return proxy_upstream_url(local_path)
 
     def build_proxy_request(self, account: AccountRecord, *, local_path: str, payload: dict[str, Any], idempotency_key: str) -> ProxyRequestSpec:
-        data = json.dumps(payload).encode()
+        upstream_payload = chat_completions_to_responses_api(payload) if local_path == "/v1/chat/completions" else payload
+        data = json.dumps(upstream_payload).encode()
         stream = self.is_streaming_request(payload)
         return ProxyRequestSpec(
             url=self.proxy_upstream_url(local_path),
@@ -806,6 +840,8 @@ class OpenAICodexProvider:
             "Content-Type": "application/json",
             "Authorization": f"Bearer {tokens.access_token}",
             "ChatGPT-Account-Id": tokens.account_id or account.account_id,
+            "OpenAI-Beta": "responses=v1",
+            "OpenAI-Originator": "codex",
             "Idempotency-Key": idempotency_key,
             "Accept": "text/event-stream" if stream else "application/json",
         }
