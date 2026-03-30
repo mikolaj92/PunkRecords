@@ -2,20 +2,17 @@
 
 PunkRecords is a self-contained local proxy runtime with plugin-based provider support and built-in multi-account OAuth management.
 
-This project keeps **many provider logins** in its own local store and exposes a CLI for:
+This project keeps provider credentials, failover state, and proxy telemetry in its own local store and exposes a server surface for:
 
-- logging in with a browser-backed device flow,
-- logging in with a browser-open OAuth callback flow,
-- listing saved accounts,
-- checking status,
-- showing combined 5h and weekly usage totals across accounts,
-- switching the active account,
-- opening a simple arrow-key TUI,
 - running a local OpenAI-compatible failover proxy for supported routes,
+- serving admin/state/settings APIs for future web UI flows,
+- routing requests across provider credential pools,
 
 ## Why this exists
 
 PunkRecords keeps provider logins, failover state, and proxy telemetry together under one local runtime root while exposing a single proxy surface for traffic.
+
+The old text-mode TUI has been removed. The CLI is now limited to starting the server; administration is expected to move through the proxy/admin API and future web UI.
 
 ## Current scope
 
@@ -23,7 +20,7 @@ Version `0.1.0` ships with one built-in provider plugin:
 
 - built-in provider: `openai-codex`
 - auth type: OAuth logins, not API keys
-- CLI-first workflow
+- server-oriented workflow with API endpoints and future web UI/admin flows
 - staged OpenAI-compatible proxy support for selected routes
 
 The provider system itself is plugin-based. Built-in plugins live in the repository under the `providers/` package, and external plugins can be loaded by setting:
@@ -33,13 +30,7 @@ The provider system itself is plugin-based. Built-in plugins live in the reposit
 ## Commands
 
 ```bash
-punkrecords status
-punkrecords list
-punkrecords login --label work
-punkrecords login --headless --label backup
-punkrecords switch 2
-punkrecords tui
-punkrecords proxy --host 127.0.0.1 --port 4141
+punkrecords proxy --host 0.0.0.0 --port 4141
 ```
 
 ## Development
@@ -53,7 +44,7 @@ uv run pytest
 You can also run without installing:
 
 ```bash
-uv run punkrecords status
+uv run punkrecords proxy --host 0.0.0.0 --port 4141
 ```
 
 ## Storage
@@ -69,23 +60,6 @@ You can override that root directory with the new primary environment variable:
 
 - `PUNKRECORDS_HOME=/path/to/home`
 
-## Login flow
-
-The built-in `openai-codex` provider uses the OpenAI Codex browser-based OAuth flow with a local loopback callback.
-
-- default mode: opens the browser to the authorize URL and waits for the local callback
-- `--headless`: uses the manual device-code flow as a fallback
-
-## TUI
-
-Run:
-
-```bash
-uv run punkrecords tui
-```
-
-Use the arrow keys and Enter to navigate the menu.
-
 ## Local proxy
 
 The proxy server is implemented with FastAPI and served through Uvicorn.
@@ -95,7 +69,7 @@ PunkRecords is designed to behave primarily as a self-contained proxy server, so
 Run:
 
 ```bash
-uv run punkrecords proxy --host 127.0.0.1 --port 4141
+uv run punkrecords proxy --host 0.0.0.0 --port 4141
 ```
 
 FastAPI exposes built-in API docs and schema when the proxy is running:

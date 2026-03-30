@@ -1,0 +1,59 @@
+<div class="grid gap-4">
+  <div class="card">
+    <header>
+      <h2>Settings</h2>
+      <p>Update current proxy and routing configuration.</p>
+    </header>
+    <section>
+      {% if settings_notice %}
+      <p>{{ settings_notice }}</p>
+      {% endif %}
+      {% if settings_error %}
+      <p>{{ settings_error }}</p>
+      {% endif %}
+      <form
+        hx-post="/_proxy/dashboard/settings"
+        hx-target="#dashboard-settings"
+        hx-swap="innerHTML"
+      >
+        <div class="grid gap-4">
+          <label>
+            <span>Proxy host</span>
+            <input type="text" name="proxy_host" value="{{ settings_form.proxy_host }}" />
+          </label>
+          <label>
+            <span>Proxy port</span>
+            <input type="number" name="proxy_port" value="{{ settings_form.proxy_port }}" min="1" max="65535" />
+          </label>
+          <label>
+            <span>Max attempts</span>
+            <input type="number" name="proxy_max_attempts" value="{{ settings_form.proxy_max_attempts }}" min="1" />
+          </label>
+          <label>
+            <span>Provider order</span>
+            <input type="text" name="routing_provider_order" value="{{ settings_form.routing_provider_order }}" />
+          </label>
+          <label>
+            <span>Route overrides JSON</span>
+            <textarea name="routing_route_overrides" rows="8">{{ settings_form.routing_route_overrides }}</textarea>
+          </label>
+          <label>
+            <span>Model overrides JSON</span>
+            <textarea name="routing_model_overrides" rows="8">{{ settings_form.routing_model_overrides }}</textarea>
+          </label>
+          <div class="flex items-center gap-4">
+            <button type="submit">Save settings</button>
+            <button
+              type="button"
+              hx-get="/_proxy/dashboard/settings"
+              hx-target="#dashboard-settings"
+              hx-swap="innerHTML"
+            >
+              Reset
+            </button>
+          </div>
+        </div>
+      </form>
+    </section>
+  </div>
+</div>

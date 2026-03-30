@@ -47,6 +47,9 @@ class AccountRepository:
     def list_accounts(self) -> list[AccountRecord]:
         return self.load().accounts
 
+    def list_provider_credentials(self, provider_id: str) -> list[AccountRecord]:
+        return [account for account in self.load().accounts if account.provider == provider_id]
+
     @staticmethod
     def _same_account(existing: AccountRecord, candidate: AccountRecord) -> bool:
         if existing.id and candidate.id and existing.id == candidate.id and existing.provider == candidate.provider:
@@ -210,8 +213,10 @@ class AccountRepository:
             {
                 "id": account.id,
                 "account_id": account.external_id,
+                "credential_id": account.external_id,
                 "email": account.contact,
                 "label": account.display_name,
+                "credential_label": account.display_name,
                 "provider": account.provider,
                 "active": account.id == active_id,
                 "enabled": account.enabled,

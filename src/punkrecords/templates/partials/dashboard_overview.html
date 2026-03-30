@@ -1,0 +1,72 @@
+<div class="grid gap-4">
+  <div class="grid gap-4">
+    <div class="card">
+      <header>
+        <h2>Overview</h2>
+        <p>Current proxy state and rollups.</p>
+      </header>
+      <section class="grid gap-4">
+        <div class="grid gap-4">
+          <div class="card">
+            <header>
+              <h3>Accounts</h3>
+              <p>{{ state.accounts_total }} total · {{ state.eligible_accounts }} eligible</p>
+            </header>
+          </div>
+          <div class="card">
+            <header>
+              <h3>Requests</h3>
+              <p>{{ stats.request_count }} total · {{ stats.success_count }} success · {{ stats.error_count }} errors</p>
+            </header>
+          </div>
+          <div class="card">
+            <header>
+              <h3>Tokens</h3>
+              <p>Usage totals with input and output split out.</p>
+            </header>
+            <section>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Type</th>
+                    <th>Count</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>Total tokens</td>
+                    <td>{{ stats.total_tokens }}</td>
+                  </tr>
+                  <tr>
+                    <td>Input tokens</td>
+                    <td>{{ stats.input_tokens }}</td>
+                  </tr>
+                  <tr>
+                    <td>Output tokens</td>
+                    <td>{{ stats.output_tokens }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </section>
+          </div>
+          <div class="card">
+            <header>
+              <h3>Active account</h3>
+              <p>{{ active_account.label if active_account else "No active account" }}</p>
+            </header>
+          </div>
+        </div>
+        <div class="card">
+          <header>
+            <h3>Current state</h3>
+            <p>Enabled accounts: {{ state.accounts_enabled }} · Cooldown: {{ state.cooldown_accounts }}</p>
+          </header>
+          <section>
+            <p>Updated: {{ stats.updated_at or "No traffic yet" }}</p>
+            <p>Proxy host: {{ settings.proxy.host }}:{{ settings.proxy.port }} · Max attempts: {{ settings.proxy.max_attempts }}</p>
+          </section>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>

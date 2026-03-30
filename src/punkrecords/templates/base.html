@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{% block title %}PunkRecords{% endblock %}</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/basecoat-css@0.3.11/dist/basecoat.cdn.min.css" />
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/basecoat-css@0.3.11/dist/js/basecoat.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/basecoat-css@0.3.11/dist/js/sidebar.min.js" defer></script>
+    <style>
+      :root {
+        --dashboard-chart-ink: #52525b;
+        --dashboard-chart-muted: #a1a1aa;
+        --dashboard-chart-fill: rgba(82, 82, 91, 0.16);
+        --dashboard-chart-accent: #71717a;
+        --dashboard-chart-success: #3f3f46;
+        --dashboard-chart-error: #d4d4d8;
+      }
+    </style>
+    {% block head %}{% endblock %}
+  </head>
+  <body>
+    {% include "partials/sidebar.html" %}
+    <main id="page-content">
+      {% block page %}{% endblock %}
+    </main>
+    <script>
+      function punkrecordsChartColors() {
+        const styles = getComputedStyle(document.documentElement);
+        return {
+          ink: styles.getPropertyValue('--dashboard-chart-ink').trim(),
+          muted: styles.getPropertyValue('--dashboard-chart-muted').trim(),
+          fill: styles.getPropertyValue('--dashboard-chart-fill').trim(),
+          accent: styles.getPropertyValue('--dashboard-chart-accent').trim(),
+          success: styles.getPropertyValue('--dashboard-chart-success').trim(),
+          error: styles.getPropertyValue('--dashboard-chart-error').trim(),
+        };
+      }
+
+      function buildPunkrecordsChartConfig(canvas) {
+        const labels = JSON.parse(canvas.dataset.chartLabels || '[]');
+        const values = JSON.parse(canvas.dataset.chartValues || '[]');
+        const kind = canvas.dataset.chartKind || 'bar';
+        const label = canvas.dataset.chartLabel || '';
+        const colors = punkrecordsChartColors();
+        const baseDataset = {
+          label,
+          data: values,
+          borderColor: colors.ink,
+          backgroundColor: kind === 'doughnut' ? [colors.success, colors.error] : colors.fill,
+          pointBackgroundColor: colors.ink,
+          pointBorderColor: colors.ink,
+          tension: 0.3,
+          fill: kind === 'line',
+        };
+        return {
+          type: kind,
+          data: { labels, datasets: [baseDataset] },
+          options: {
+            animation: false,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: kind === 'doughnut' } },
+            scales: kind === 'doughnut' ? {} : {
+              x: { ticks: { color: colors.muted }, grid: { display: false } },
+              y: { beginAtZero: true, ticks: { color: colors.muted }, grid: { color: colors.fill } },
+            },
+          },
+        };
+      }
+
+      function initPunkrecordsCharts(root) {
+        if (typeof Chart === 'undefined') {
+          return;
+        }
+        if (!window.__punkrecordsCharts) {
+          window.__punkrecordsCharts = new WeakMap();
+        }
+        root.querySelectorAll('[data-chart-kind]').forEach((canvas) => {
+          const existing = window.__punkrecordsCharts.get(canvas);
+          if (existing) {
+            existing.destroy();
+          }
+          const instance = new Chart(canvas.getContext('2d'), buildPunkrecordsChartConfig(canvas));
+          window.__punkrecordsCharts.set(canvas, instance);
+        });
+      }
+
+      document.addEventListener('DOMContentLoaded', function () {
+        initPunkrecordsCharts(document);
+      });
+
+      document.body.addEventListener('htmx:afterSwap', function (event) {
+        initPunkrecordsCharts(event.target);
+      });
+    </script>
+    {% block scripts %}{% endblock %}
+  </body>
+</html>

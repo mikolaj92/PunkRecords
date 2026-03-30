@@ -1,0 +1,2 @@
+{"account_id": null, "endpoint": "/v1/responses", "input_tokens": null, "latency_ms": 73, "output_tokens": null, "provider_id": "fake-transform", "request_id": "d71ebbd3-2d2c-4e9c-9dee-aec77df51dc0", "status_code": 502, "stream": false, "total_tokens": null}
+{"account_id": null, "endpoint": "/v1/responses", "input_tokens": null, "latency_ms": 3, "output_tokens": null, "provider_id": "fake-transform", "request_id": "72141571-31fb-4055-9ba4-fe73ffb377cc", "status_code": 502, "stream": false, "total_tokens": null}

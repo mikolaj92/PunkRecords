@@ -1,0 +1,1 @@
+{"account_id": "acct-1", "endpoint": "/v1/responses", "input_tokens": null, "latency_ms": 1, "output_tokens": null, "provider_id": "openai-codex", "request_id": "08dee581-0601-47c3-b010-67dbe8c6c4b3", "status_code": 200, "stream": false, "total_tokens": null}

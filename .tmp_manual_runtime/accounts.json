@@ -1,0 +1,105 @@
+{
+  "version": 1,
+  "active_account_id": "local-1",
+  "accounts": [
+    {
+      "id": "ce000b8c-e538-434b-8e3a-12e644215ad5",
+      "external_id": "acct-1",
+      "contact": "user1@example.com",
+      "display_name": "manual-work",
+      "provider": "openai-codex",
+      "created_at": "2026-03-29T12:55:22.953527Z",
+      "last_refresh": "2026-03-29T12:55:22.953527Z",
+      "last_used": "2026-03-29T12:55:22.953646Z",
+      "auth_kind": "chatgpt",
+      "creation_source": "device-flow",
+      "enabled": true,
+      "last_error": null,
+      "cooldown_until": null,
+      "last_proxy_error": null,
+      "last_proxy_error_at": null,
+      "provider_state": {
+        "tokens": {
+          "access_token": "header.eyJleHAiOjQ3NzQ2ODYzNDAsImh0dHBzOi8vYXBpLm9wZW5haS5jb20vYXV0aCI6eyJjaGF0Z3B0X2FjY291bnRfaWQiOiJhY2N0LTEifSwiaHR0cHM6Ly9hcGkub3BlbmFpLmNvbS9wcm9maWxlIjp7ImVtYWlsIjoidXNlcjFAZXhhbXBsZS5jb20ifX0.sig",
+          "refresh_token": "refresh-acct-1",
+          "account_id": "acct-1"
+        },
+        "auth_mode": "chatgpt"
+      },
+      "tokens": {},
+      "account_id": "acct-1",
+      "email": "user1@example.com",
+      "label": "manual-work",
+      "auth_mode": "chatgpt",
+      "source": "device-flow"
+    },
+    {
+      "id": "local-1",
+      "external_id": "acct-1",
+      "contact": "user1@example.com",
+      "display_name": "work",
+      "provider": "openai-codex",
+      "created_at": "2026-03-27T00:00:00Z",
+      "last_refresh": "2026-03-27T00:00:00Z",
+      "last_used": "2026-03-29T12:55:23.454626Z",
+      "auth_kind": "provider-plugin",
+      "creation_source": "device-flow",
+      "enabled": true,
+      "last_error": null,
+      "cooldown_until": null,
+      "last_proxy_error": null,
+      "last_proxy_error_at": null,
+      "provider_state": {
+        "_legacy_tokens": {
+          "access_token": "token-1",
+          "refresh_token": "refresh-1",
+          "account_id": "acct-1"
+        }
+      },
+      "tokens": {
+        "access_token": "token-1",
+        "refresh_token": "refresh-1",
+        "account_id": "acct-1"
+      },
+      "account_id": "acct-1",
+      "email": "user1@example.com",
+      "label": "work",
+      "auth_mode": "provider-plugin",
+      "source": "device-flow"
+    },
+    {
+      "id": "local-2",
+      "external_id": "acct-2",
+      "contact": "user2@example.com",
+      "display_name": "backup",
+      "provider": "",
+      "created_at": "2026-03-27T00:00:00Z",
+      "last_refresh": "2026-03-27T00:00:00Z",
+      "last_used": "2026-03-29T12:55:23.455423Z",
+      "auth_kind": "",
+      "creation_source": "",
+      "enabled": true,
+      "last_error": null,
+      "cooldown_until": null,
+      "last_proxy_error": null,
+      "last_proxy_error_at": null,
+      "provider_state": {
+        "_legacy_tokens": {
+          "access_token": "token-2",
+          "refresh_token": "refresh-2",
+          "account_id": "acct-2"
+        }
+      },
+      "tokens": {
+        "access_token": "token-2",
+        "refresh_token": "refresh-2",
+        "account_id": "acct-2"
+      },
+      "account_id": "acct-2",
+      "email": "user2@example.com",
+      "label": "backup",
+      "auth_mode": "",
+      "source": ""
+    }
+  ]
+}

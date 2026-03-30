@@ -1,0 +1,32 @@
+<div class="grid gap-4">
+  <div class="card">
+    <header>
+      <h2>Charts</h2>
+      <p>Simple request and latency rollups.</p>
+    </header>
+    <section class="grid gap-4">
+      {% for chart_key, chart in charts.items() %}
+      <div class="card">
+        <header>
+          <h3>{{ chart["title"] }}</h3>
+          <p>{{ chart["values"]|sum if chart["values"] else 0 }} total</p>
+        </header>
+        <section>
+          {% if chart["values"] %}
+          <div style="height: 240px;">
+            <canvas
+              data-chart-kind="{{ chart["kind"] }}"
+              data-chart-label="{{ chart["title"] }}"
+              data-chart-labels='{{ chart["labels"]|tojson }}'
+              data-chart-values='{{ chart["values"]|tojson }}'
+            ></canvas>
+          </div>
+          {% else %}
+          <p>No chart data yet.</p>
+          {% endif %}
+        </section>
+      </div>
+      {% endfor %}
+    </section>
+  </div>
+</div>

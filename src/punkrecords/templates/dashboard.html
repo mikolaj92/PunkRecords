@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard · PunkRecords{% endblock %}
+
+{% block page %}
+<div class="grid gap-6">
+  <div class="card">
+    <header>
+      <div class="flex items-center justify-between gap-4">
+        <div>
+          <h1>Dashboard</h1>
+          <p>Operator view for proxy state, traffic, credentials, and settings.</p>
+        </div>
+        <button
+          type="button"
+          aria-label="Toggle navigation"
+          onclick="document.dispatchEvent(new CustomEvent('basecoat:sidebar', { detail: { id: 'app-sidebar' } }))"
+        >
+          Menu
+        </button>
+      </div>
+    </header>
+    <section>
+      <p>Server-rendered overview with HTMX fragments. JSON admin routes remain available in the sidebar.</p>
+    </section>
+  </div>
+
+  <section
+    id="dashboard-overview"
+    class="grid gap-4"
+    hx-get="/_proxy/dashboard/overview"
+    hx-trigger="load, every 15s"
+    hx-target="this"
+    hx-swap="innerHTML"
+  >
+    <p>Loading overview...</p>
+  </section>
+
+  <section
+    id="dashboard-charts"
+    class="grid gap-4"
+    hx-get="/_proxy/dashboard/charts"
+    hx-trigger="load, every 20s"
+    hx-target="this"
+    hx-swap="innerHTML"
+  >
+    <p>Loading charts...</p>
+  </section>
+
+  <section
+    id="dashboard-requests"
+    class="grid gap-4"
+    hx-get="/_proxy/dashboard/requests?limit=20"
+    hx-trigger="load, every 15s"
+    hx-target="this"
+    hx-swap="innerHTML"
+  >
+    <p>Loading recent requests...</p>
+  </section>
+
+  <section
+    id="dashboard-accounts"
+    class="grid gap-4"
+    hx-get="/_proxy/dashboard/accounts"
+    hx-trigger="load"
+    hx-target="this"
+    hx-swap="innerHTML"
+  >
+    <p>Loading credentials...</p>
+  </section>
+
+  <section
+    id="dashboard-settings"
+    class="grid gap-4"
+    hx-get="/_proxy/dashboard/settings"
+    hx-trigger="load"
+    hx-target="this"
+    hx-swap="innerHTML"
+  >
+    <p>Loading settings...</p>
+  </section>
+</div>
+{% endblock %}

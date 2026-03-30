@@ -11,6 +11,7 @@ cli_module = importlib.import_module("punkrecords.cli")
 models_module = importlib.import_module("punkrecords.models")
 paths_module = importlib.import_module("punkrecords.paths")
 providers_module = importlib.import_module("punkrecords.providers")
+settings_store_module = importlib.import_module("punkrecords.settings_store")
 store_module = importlib.import_module("punkrecords.store")
 usage_module = importlib.import_module("punkrecords.models")
 
@@ -19,8 +20,9 @@ AccountRecord = models_module.AccountRecord
 AccountTokens = models_module.AccountTokens
 AccountRepository = store_module.AccountRepository
 AccountUsage = usage_module.AccountUsage
-UsageWindow = usage_module.UsageWindow
 get_provider = providers_module.get_provider
+ProviderCapabilityProfile = providers_module.ProviderCapabilityProfile
+ProviderRoutingDecision = providers_module.ProviderRoutingDecision
 
 
 def _jwt_segment(payload: Mapping[str, object]) -> str:
@@ -54,29 +56,49 @@ def make_account(account_id: str, label: str, email: str) -> AccountRecord:
     )
 
 
-def test_status_and_list_empty(monkeypatch, tmp_path, capsys):
-    monkeypatch.setenv("PUNKRECORDS_HOME", str(tmp_path / "manager"))
+def test_help_and_parser_expose_only_server_cli(capsys):
+    assert main(["help"]) == 0
+    help_output = capsys.readouterr().out
+    assert "uv run punkrecords proxy --host 0.0.0.0 --port 4141" in help_output
+    assert "- proxy [--host HOST] [--port PORT]" in help_output
+    assert "- help" in help_output
+    assert "login" not in help_output
+    assert "status" not in help_output
+    assert "list" not in help_output
+    assert "switch" not in help_output
+    assert "tui" not in help_output
 
-    assert main(["status"]) == 0
-    status_output = capsys.readouterr().out
-    assert "Accounts:" in status_output
-    assert "Active:        none" in status_output
+    parser = cli_module.build_parser()
+    for removed in (["tui"], ["login"], ["status"], ["list"], ["switch", "1"]):
+        try:
+            parser.parse_args(removed)
+        except SystemExit as exc:
+            assert exc.code == 2
+        else:
+            raise AssertionError(f"Expected parser to reject removed command: {removed}")
 
-    assert main(["list"]) == 0
-    list_output = capsys.readouterr().out
-    assert "No accounts saved yet." in list_output
+    args = parser.parse_args(["proxy", "--host", "0.0.0.0", "--port", "4242"])
+    assert args.command == "proxy"
+    assert args.host == "0.0.0.0"
+    assert args.port == 4242
 
 
-def test_switch_changes_active_account(monkeypatch, tmp_path, capsys):
-    monkeypatch.setenv("PUNKRECORDS_HOME", str(tmp_path / "manager"))
+def test_model_exposes_credential_aliases():
+    account = make_account("acct-1", "work", "work@example.com")
 
-    repo = AccountRepository()
-    repo.upsert_account(make_account("acct-1", "work", "work@example.com"), make_active=True)
-    repo.upsert_account(make_account("acct-2", "backup", "backup@example.com"), make_active=False)
+    assert account.credential_id == "acct-1"
+    assert account.credential_label == "work"
+    assert account.credential_contact == "work@example.com"
 
-    assert main(["switch", "2"]) == 0
-    switch_output = capsys.readouterr().out
-    assert "Active account: backup" in switch_output
+    account.credential_id = "acct-2"
+    account.credential_label = "backup"
+    account.credential_contact = "backup@example.com"
+    account.credential_kind = "api-key"
+
+    assert account.account_id == "acct-2"
+    assert account.label == "backup"
+    assert account.email == "backup@example.com"
+    assert account.auth_mode == "api-key"
 
 
 def test_repository_load_migrates_missing_provider_to_legacy_builtin(tmp_path):
@@ -106,6 +128,21 @@ def test_repository_load_migrates_missing_provider_to_legacy_builtin(tmp_path):
     repo = AccountRepository(path)
     account = repo.list_accounts()[0]
     assert account.provider == "openai-codex"
+
+
+def test_repository_lists_credentials_per_provider(tmp_path):
+    repo = AccountRepository(tmp_path / "accounts.json")
+    first = make_account("acct-1", "one", "one@example.com")
+    second = make_account("acct-2", "two", "two@example.com")
+    third = make_account("acct-3", "three", "three@example.com")
+    third.provider = "other-provider"
+
+    repo.upsert_account(first, make_active=True)
+    repo.upsert_account(second, make_active=False)
+    repo.upsert_account(third, make_active=False)
+
+    credentials = repo.list_provider_credentials("openai-codex")
+    assert [credential.account_id for credential in credentials] == ["acct-1", "acct-2"]
 
 
 def test_provider_registry_exposes_builtin_openai_codex():
@@ -193,6 +230,12 @@ def test_provider_registry_can_load_external_provider(monkeypatch):
         def classify_proxy_failure(self, status_code, body):
             return False, 0
 
+        def classify_routing_failure(self, status_code, body):
+            return ProviderRoutingDecision(status_code >= 500, "fake-auth")
+
+        def capability_profile(self):
+            return ProviderCapabilityProfile(model_ids=("fake-model",), supports_streaming=False, supports_tools=False, supports_embeddings=False)
+
         def build_provider_state(self, account):
             return {"fake_state": account.provider_state}
 
@@ -258,6 +301,12 @@ def test_provider_registry_can_load_external_provider(monkeypatch):
         def classify_proxy_failure(self, status_code, body):
             return False, 0
 
+        def classify_routing_failure(self, status_code, body):
+            return ProviderRoutingDecision(status_code >= 500, "fake-proxy")
+
+        def capability_profile(self):
+            return ProviderCapabilityProfile(model_ids=("fake-model",), supports_streaming=False, supports_tools=False, supports_embeddings=False)
+
     descriptor = providers_module.ProviderDescriptor(
         provider_id="fake-external",
         label="Fake External",
@@ -289,6 +338,27 @@ def test_provider_registry_can_load_external_provider(monkeypatch):
         importlib.reload(reloaded)
 
 
+def test_settings_validate_routing_payload(monkeypatch):
+    monkeypatch.delenv("PUNKRECORDS_PROVIDER_MODULES", raising=False)
+
+    settings_store_module.validate_settings_payload(
+        {
+            "routing": {
+                "provider_order": ["openai-codex"],
+                "route_overrides": {"/v1/responses": ["openai-codex"]},
+                "model_overrides": {"gpt-5.4": ["openai-codex"]},
+            }
+        }
+    )
+
+    try:
+        settings_store_module.validate_settings_payload({"routing": {"provider_order": ["unknown-provider"]}})
+    except ValueError as exc:
+        assert str(exc) == "Unknown provider in settings.routing.provider_order: unknown-provider"
+    else:
+        raise AssertionError("Expected unknown provider validation failure")
+
+
 def test_repository_treats_same_account_id_from_different_providers_as_distinct(tmp_path):
     repo = AccountRepository(tmp_path / "accounts.json")
     first = make_account("acct-shared", "one", "one@example.com")
@@ -301,52 +371,6 @@ def test_repository_treats_same_account_id_from_different_providers_as_distinct(
     accounts = repo.list_accounts()
     assert len(accounts) == 2
     assert {account.provider for account in accounts} == {"openai-codex", "other-provider"}
-
-
-def test_status_aggregates_usage(monkeypatch, tmp_path, capsys):
-    monkeypatch.setenv("PUNKRECORDS_HOME", str(tmp_path / "manager"))
-
-    repo = AccountRepository()
-    repo.upsert_account(make_account("acct-1", "work", "work@example.com"), make_active=True)
-    repo.upsert_account(make_account("acct-2", "backup", "backup@example.com"), make_active=False)
-
-    def fake_fetch(account):
-        if account.account_id == "acct-1":
-            return account, AccountUsage(
-                account_id=account.account_id,
-                label=account.label,
-                provider=account.provider,
-                primary_window=UsageWindow(used_percent=25.0, reset_after_seconds=100, reset_at=1760000100),
-                secondary_window=UsageWindow(used_percent=10.0, reset_after_seconds=1000, reset_at=1760001000),
-            )
-        return account, AccountUsage(
-            account_id=account.account_id,
-            label=account.label,
-            provider=account.provider,
-            primary_window=UsageWindow(used_percent=40.0, reset_after_seconds=200, reset_at=1760000200),
-            secondary_window=UsageWindow(used_percent=15.0, reset_after_seconds=1200, reset_at=1760002000),
-        )
-
-    monkeypatch.setattr(cli_module, "get_fetch_account_usage", lambda: fake_fetch)
-
-    assert main(["status"]) == 0
-    output = capsys.readouterr().out
-    assert "Usage" in output
-    assert "| Account | Provider     | Plan" in output
-    assert "openai-codex | unknown | 25.0%" in output
-    assert "openai-codex | unknown | 40.0%" in output
-    assert "Summary:" in output
-    assert "Reported 5h:   65.0% / 200.0% across 2 account(s), reset in 1m 40s" in output
-    assert "Reported week: 25.0% / 200.0% across 2 account(s), reset in 16m 40s" in output
-
-    assert main(["status", "--json"]) == 0
-    payload = json.loads(capsys.readouterr().out)
-    assert len(payload["usage_reports"]) == 1
-    report = payload["usage_reports"][0]
-    assert report["summary"]["5h"]["used_percent_total"] == 65.0
-    assert report["summary"]["weekly"]["used_percent_total"] == 25.0
-    assert report["summary"]["5h"]["reset_after_seconds_min"] == 100
-    assert report["summary"]["weekly"]["reset_after_seconds_min"] == 1000
 
 
 def test_app_home_prefers_new_env_var(monkeypatch, tmp_path):

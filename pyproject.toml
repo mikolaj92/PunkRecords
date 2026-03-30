@@ -10,6 +10,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
   "fastapi==0.135.2",
+  "jinja2==3.1.6",
   "uvicorn==0.42.0",
 ]
 authors = [
@@ -25,6 +26,12 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+punkrecords = [
+  "templates/*.html",
+  "templates/partials/*.html",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

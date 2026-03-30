@@ -1,0 +1,15 @@
+{
+  "proxy": {
+    "host": "127.0.0.1",
+    "port": 4141,
+    "max_attempts": 3
+  },
+  "routing": {
+    "provider_order": [
+      "fake-external",
+      "openai-codex"
+    ],
+    "route_overrides": {},
+    "model_overrides": {}
+  }
+}

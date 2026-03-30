@@ -191,7 +191,7 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=8765)
     args = parser.parse_args()
 
-    server = MockOAuthServer(("127.0.0.1", args.port), OAuthHandler)
+    server = MockOAuthServer(("localhost", args.port), OAuthHandler)
     try:
         server.serve_forever()
     finally:

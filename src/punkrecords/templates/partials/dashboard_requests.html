@@ -1,0 +1,54 @@
+<div class="grid gap-4">
+  <div class="card">
+    <header>
+      <div class="flex items-center justify-between gap-4">
+        <div>
+          <h2>Recent requests</h2>
+          <p>Latest proxy activity from the request history log.</p>
+        </div>
+        <button
+          type="button"
+          hx-get="/_proxy/dashboard/requests?limit=20"
+          hx-target="#dashboard-requests"
+          hx-swap="innerHTML"
+        >
+          Refresh
+        </button>
+      </div>
+    </header>
+    <section>
+      {% if requests %}
+      <table>
+        <thead>
+          <tr>
+            <th>Endpoint</th>
+            <th>Status</th>
+            <th>Latency</th>
+            <th>Account</th>
+            <th>Provider</th>
+            <th>Input</th>
+            <th>Output</th>
+            <th>Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in requests %}
+          <tr>
+            <td>{{ item.endpoint or "unknown" }}</td>
+            <td>{{ item.status_code }}</td>
+            <td>{{ item.latency_ms or 0 }} ms</td>
+            <td>{{ item.account_id or "unknown" }}</td>
+            <td>{{ item.provider_id or "unknown" }}</td>
+            <td>{{ item.input_tokens if item.input_tokens is not none else "—" }}</td>
+            <td>{{ item.output_tokens if item.output_tokens is not none else "—" }}</td>
+            <td>{{ item.total_tokens if item.total_tokens is not none else "—" }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p>No requests recorded yet.</p>
+      {% endif %}
+    </section>
+  </div>
+</div>

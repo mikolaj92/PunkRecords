@@ -90,11 +90,27 @@ class AccountRecord:
         self.external_id = value
 
     @property
+    def credential_id(self) -> str:
+        return self.external_id
+
+    @credential_id.setter
+    def credential_id(self, value: str) -> None:
+        self.external_id = value
+
+    @property
     def email(self) -> str:
         return self.contact
 
     @email.setter
     def email(self, value: str) -> None:
+        self.contact = value
+
+    @property
+    def credential_contact(self) -> str:
+        return self.contact
+
+    @credential_contact.setter
+    def credential_contact(self, value: str) -> None:
         self.contact = value
 
     @property
@@ -106,11 +122,27 @@ class AccountRecord:
         self.display_name = value
 
     @property
+    def credential_label(self) -> str:
+        return self.display_name
+
+    @credential_label.setter
+    def credential_label(self, value: str) -> None:
+        self.display_name = value
+
+    @property
     def auth_mode(self) -> str:
         return self.auth_kind
 
     @auth_mode.setter
     def auth_mode(self, value: str) -> None:
+        self.auth_kind = value
+
+    @property
+    def credential_kind(self) -> str:
+        return self.auth_kind
+
+    @credential_kind.setter
+    def credential_kind(self, value: str) -> None:
         self.auth_kind = value
 
     @property

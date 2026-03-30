@@ -1,0 +1,74 @@
+{
+  "version": 1,
+  "active_account_id": "local-2",
+  "accounts": [
+    {
+      "id": "local-1",
+      "external_id": "acct-1",
+      "contact": "user1@example.com",
+      "display_name": "work",
+      "provider": "openai-codex",
+      "created_at": "2026-03-27T00:00:00Z",
+      "last_refresh": "2026-03-27T00:00:00Z",
+      "last_used": "2026-03-29T12:55:52.653164Z",
+      "auth_kind": "provider-plugin",
+      "creation_source": "device-flow",
+      "enabled": true,
+      "last_error": null,
+      "cooldown_until": "2026-03-29T13:00:52.738049Z",
+      "last_proxy_error": "{\"detail\": {\"code\": \"deactivated_workspace\"}}",
+      "last_proxy_error_at": "2026-03-29T12:55:52.738057Z",
+      "provider_state": {
+        "_legacy_tokens": {
+          "access_token": "token-1",
+          "refresh_token": "refresh-1",
+          "account_id": "acct-1"
+        }
+      },
+      "tokens": {
+        "access_token": "token-1",
+        "refresh_token": "refresh-1",
+        "account_id": "acct-1"
+      },
+      "account_id": "acct-1",
+      "email": "user1@example.com",
+      "label": "work",
+      "auth_mode": "provider-plugin",
+      "source": "device-flow"
+    },
+    {
+      "id": "local-2",
+      "external_id": "acct-2",
+      "contact": "user2@example.com",
+      "display_name": "backup",
+      "provider": "openai-codex",
+      "created_at": "2026-03-27T00:00:00Z",
+      "last_refresh": "2026-03-27T00:00:00Z",
+      "last_used": "2026-03-29T12:55:52.738974Z",
+      "auth_kind": "provider-plugin",
+      "creation_source": "device-flow",
+      "enabled": true,
+      "last_error": null,
+      "cooldown_until": null,
+      "last_proxy_error": null,
+      "last_proxy_error_at": null,
+      "provider_state": {
+        "_legacy_tokens": {
+          "access_token": "token-2",
+          "refresh_token": "refresh-2",
+          "account_id": "acct-2"
+        }
+      },
+      "tokens": {
+        "access_token": "token-2",
+        "refresh_token": "refresh-2",
+        "account_id": "acct-2"
+      },
+      "account_id": "acct-2",
+      "email": "user2@example.com",
+      "label": "backup",
+      "auth_mode": "provider-plugin",
+      "source": "device-flow"
+    }
+  ]
+}
