@@ -11,21 +11,20 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
-import webbrowser
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, BinaryIO, cast
 
 from punkrecords.models import AccountRecord, AccountTokens, AccountUsage, UsageWindow
-from punkrecords.providers.contracts import DeviceLoginChallenge, LocalRouteSpec, LoginResult, OAuthError, ProviderDescriptor, ProxyRequestSpec, StreamUsageTracker, UsageSummary
+from punkrecords.providers.contracts import BrowserLoginChallenge, DeviceLoginChallenge, LocalRouteSpec, LoginResult, OAuthError, ProviderCapabilityProfile, ProviderDescriptor, ProviderRoutingDecision, ProxyRequestSpec, StreamUsageTracker, UsageSummary
 
 DEFAULT_ISSUER = "https://auth.openai.com"
 DEFAULT_CODEX_BASE_URL = "https://chatgpt.com/backend-api/codex"
 CODEX_OAUTH_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
 CODEX_OAUTH_TOKEN_URL = "https://auth.openai.com/oauth/token"
 REFRESH_SKEW_SECONDS = 120
-DEFAULT_CALLBACK_HOST = "127.0.0.1"
+DEFAULT_CALLBACK_HOST = "localhost"
 DEFAULT_CALLBACK_PORT = 1455
 CODEX_OAUTH_SCOPES = "openid profile email offline_access api.connectors.read api.connectors.invoke"
 DEFAULT_HEADERS = {
@@ -37,6 +36,8 @@ ROUTE_MAP = {
     "/v1/chat/completions": "/responses",
     "/v1/embeddings": "/embeddings",
 }
+
+_PENDING_BROWSER_LOGINS: dict[str, "BrowserCallbackServer"] = {}
 
 
 class BrowserCallbackServer(ThreadingHTTPServer):
@@ -360,28 +361,28 @@ def build_codex_usage_report(usages: list[AccountUsage]) -> dict[str, Any]:
     five_hour = _window_summary(usages, "primary_window")
     weekly = _window_summary(usages, "secondary_window")
     failed_accounts = [usage.display_name for usage in usages if usage.error]
-    columns = ["Account", "Provider", "Plan", "5h", "5h reset", "Week", "Week reset"]
+    columns = ["Credential", "Provider", "Plan", "5h", "5h reset", "Week", "Week reset"]
     rows = _build_codex_usage_rows(usages)
     summary_lines = [
-        f"Reported 5h:   {five_hour['used_percent_total']}% / {five_hour['capacity_percent_total']}% across {five_hour['reported_accounts']} account(s), {_format_reset(five_hour)}",
-        f"Reported week: {weekly['used_percent_total']}% / {weekly['capacity_percent_total']}% across {weekly['reported_accounts']} account(s), {_format_reset(weekly)}",
+        f"Reported 5h:   {five_hour['used_percent_total']}% / {five_hour['capacity_percent_total']}% across {five_hour['reported_accounts']} credential(s), {_format_reset(five_hour)}",
+        f"Reported week: {weekly['used_percent_total']}% / {weekly['capacity_percent_total']}% across {weekly['reported_accounts']} credential(s), {_format_reset(weekly)}",
     ]
     if failed_accounts:
         summary_lines.append(f"Usage errors:  {', '.join(failed_accounts)}")
     return {
         "provider_id": "openai-codex",
         "title": "Usage",
-        "subtitle": "Account quota snapshots from the upstream usage endpoint.",
+        "subtitle": "Credential quota snapshots from the upstream usage endpoint.",
         "cards": [
             {
                 "title": "5h window",
-                "detail": f"{five_hour['reported_accounts']} account(s) reported.",
+                "detail": f"{five_hour['reported_accounts']} credential(s) reported.",
                 "value": f"{five_hour['used_percent_total']}% / {five_hour['capacity_percent_total']}%",
                 "meta": _format_reset(five_hour),
             },
             {
                 "title": "Weekly window",
-                "detail": f"{weekly['reported_accounts']} account(s) reported.",
+                "detail": f"{weekly['reported_accounts']} credential(s) reported.",
                 "value": f"{weekly['used_percent_total']}% / {weekly['capacity_percent_total']}%",
                 "meta": _format_reset(weekly),
             },
@@ -408,7 +409,7 @@ def _table_row(values: list[str], widths: list[int]) -> str:
 
 
 def build_codex_usage_table(usages: list[AccountUsage], *, columns: list[str] | None = None, rows: list[list[str]] | None = None) -> list[str]:
-    headers = columns or ["Account", "Provider", "Plan", "5h", "5h reset", "Week", "Week reset"]
+    headers = columns or ["Credential", "Provider", "Plan", "5h", "5h reset", "Week", "Week reset"]
     if rows is None:
         rows = _build_codex_usage_rows(usages)
     widths = [len(header) for header in headers]
@@ -475,6 +476,7 @@ def codex_models_payload() -> dict[str, Any]:
         "data": [
             {"id": "gpt-5.4", "object": "model", "created": 1743091200, "owned_by": "openai"},
             {"id": "gpt-5.4-mini", "object": "model", "created": 1743091200, "owned_by": "openai"},
+            {"id": "text-embedding-3-small", "object": "model", "created": 1743091200, "owned_by": "openai"},
         ],
     }
 
@@ -578,6 +580,22 @@ def classify_codex_status(status_code: int, body: bytes) -> tuple[bool, int]:
     return False, 0
 
 
+def _body_error_code(body: bytes) -> str | None:
+    try:
+        payload = json.loads(body.decode() or "{}")
+    except Exception:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    error = payload.get("error")
+    if isinstance(error, dict) and isinstance(error.get("code"), str):
+        return str(error.get("code"))
+    detail = payload.get("detail")
+    if isinstance(detail, dict) and isinstance(detail.get("code"), str):
+        return str(detail.get("code"))
+    return None
+
+
 @dataclass
 class OpenAICodexProvider:
     provider_id: str = "openai-codex"
@@ -618,17 +636,14 @@ class OpenAICodexProvider:
         authorize_url = f"{issuer}/oauth/authorize?{urllib.parse.urlencode(authorize_params)}"
         print("OpenAI Codex sign-in")
         print()
-        print(f"Authorization URL: {authorize_url}")
+        print("Copy and open the URL below in your browser to sign in:")
+        print()
+        print(f"  {authorize_url}")
         print()
         print(f"Waiting for browser callback on {redirect_uri} ... Press Ctrl+C to cancel.")
         print()
 
         try:
-            opened = webbrowser.open(authorize_url)
-            if opened:
-                print("Opened browser automatically.")
-            else:
-                print("Could not open browser automatically. Open the URL manually.")
 
             completed = callback_server.callback_event.wait(timeout=15 * 60)
         except KeyboardInterrupt as exc:
@@ -717,6 +732,90 @@ class OpenAICodexProvider:
             timeout=15.0,
         )
         return LoginResult(account=_build_account(tokens, label=challenge.label, source="device-flow"), base_url=DEFAULT_CODEX_BASE_URL)
+
+    def start_browser_login(self, *, label: str | None = None, redirect_uri: str | None = None) -> BrowserLoginChallenge:
+        issuer = os.getenv("PUNKRECORDS_OPENAI_CODEX_OAUTH_ISSUER", DEFAULT_ISSUER).strip().rstrip("/")
+        token_url = os.getenv("PUNKRECORDS_OPENAI_CODEX_OAUTH_TOKEN_URL", CODEX_OAUTH_TOKEN_URL).strip() or CODEX_OAUTH_TOKEN_URL
+        client_id = os.getenv("PUNKRECORDS_OPENAI_CODEX_OAUTH_CLIENT_ID", CODEX_OAUTH_CLIENT_ID).strip() or CODEX_OAUTH_CLIENT_ID
+        callback_host = os.getenv("PUNKRECORDS_OPENAI_CODEX_OAUTH_CALLBACK_HOST", DEFAULT_CALLBACK_HOST).strip() or DEFAULT_CALLBACK_HOST
+        callback_port = int(os.getenv("PUNKRECORDS_OPENAI_CODEX_OAUTH_CALLBACK_PORT", str(DEFAULT_CALLBACK_PORT)).strip() or str(DEFAULT_CALLBACK_PORT))
+
+        state = secrets.token_urlsafe(24)
+        code_verifier, code_challenge = _generate_pkce_pair()
+        originator = secrets.token_urlsafe(12)
+        
+        callback_server = BrowserCallbackServer((callback_host, callback_port), OAuthCallbackHandler)
+        callback_server.expected_state = state
+        callback_thread = threading.Thread(target=callback_server.serve_forever, daemon=True)
+        callback_thread.start()
+        
+        callback_uri = f"http://localhost:{callback_port}/auth/callback"
+        
+        authorize_params = {
+            "response_type": "code",
+            "client_id": client_id,
+            "redirect_uri": callback_uri,
+            "scope": CODEX_OAUTH_SCOPES,
+            "code_challenge": code_challenge,
+            "code_challenge_method": "S256",
+            "id_token_add_organizations": "true",
+            "codex_cli_simplified_flow": "true",
+            "state": state,
+            "originator": originator,
+        }
+        workspace_id = os.getenv("PUNKRECORDS_OPENAI_CODEX_ALLOWED_WORKSPACE_ID", "").strip()
+        if workspace_id:
+            authorize_params["allowed_workspace_id"] = workspace_id
+
+        authorize_url = f"{issuer}/oauth/authorize?{urllib.parse.urlencode(authorize_params)}"
+
+        _PENDING_BROWSER_LOGINS[state] = callback_server
+
+        return BrowserLoginChallenge(
+            provider_id=self.provider_id,
+            authorize_url=authorize_url,
+            redirect_uri=callback_uri,
+            code_verifier=code_verifier,
+            state=state,
+            issuer=issuer,
+            token_url=token_url,
+            client_id=client_id,
+            label=label,
+        )
+
+    def wait_browser_login_callback(self, state: str, timeout: float = 300.0) -> str:
+        callback_server = _PENDING_BROWSER_LOGINS.get(state)
+        if not callback_server:
+            raise OAuthError("No pending browser login for this state")
+        try:
+            completed = callback_server.callback_event.wait(timeout=timeout)
+        finally:
+            callback_server.shutdown()
+            callback_server.server_close()
+            _PENDING_BROWSER_LOGINS.pop(state, None)
+
+        if not completed:
+            raise OAuthError("Browser login timed out")
+        if callback_server.callback_error:
+            raise OAuthError(callback_server.callback_error)
+        authorization_code = str(callback_server.authorization_code or "").strip()
+        if not authorization_code:
+            raise OAuthError("Browser callback did not provide an authorization code")
+        return authorization_code
+
+    def complete_browser_login(self, challenge: BrowserLoginChallenge, authorization_code: str) -> LoginResult:
+        tokens = _form_post(
+            challenge.token_url,
+            {
+                "grant_type": "authorization_code",
+                "code": authorization_code,
+                "redirect_uri": challenge.redirect_uri,
+                "client_id": challenge.client_id,
+                "code_verifier": challenge.code_verifier,
+            },
+            timeout=15.0,
+        )
+        return LoginResult(account=_build_account(tokens, label=challenge.label, source="browser-flow"), base_url=DEFAULT_CODEX_BASE_URL)
 
     def login_via_device_flow(self, *, label: str | None = None, headless: bool = False) -> LoginResult:
         del headless
@@ -897,6 +996,23 @@ class OpenAICodexProvider:
 
     def classify_proxy_failure(self, status_code: int, body: bytes) -> tuple[bool, int]:
         return classify_codex_status(status_code, body)
+
+    def classify_routing_failure(self, status_code: int, body: bytes) -> ProviderRoutingDecision:
+        retryable, _ = self.classify_proxy_failure(status_code, body)
+        if retryable:
+            return ProviderRoutingDecision(True, "retryable_provider_failure")
+        error_code = _body_error_code(body)
+        if error_code in {"no_eligible_accounts", "all_accounts_failed", "upstream_connection_error", "account_refresh_failed"}:
+            return ProviderRoutingDecision(True, error_code)
+        return ProviderRoutingDecision(False, error_code or "fatal_or_invalid_request")
+
+    def capability_profile(self) -> ProviderCapabilityProfile:
+        return ProviderCapabilityProfile(
+            model_ids=("gpt-5.4", "gpt-5.4-mini", "text-embedding-3-small"),
+            supports_streaming=True,
+            supports_tools=True,
+            supports_embeddings=True,
+        )
 
     def describe_local_routes(self, *, base_url: str) -> list[tuple[str, str]]:
         return describe_codex_routes(base_url)

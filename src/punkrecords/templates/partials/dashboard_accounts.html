@@ -1,0 +1,195 @@
+<div class="grid gap-4">
+  <div class="card">
+    <header>
+      <div class="flex items-center justify-between gap-4">
+        <div>
+          <h2>Credentials</h2>
+          <p>Current account and cooldown state.</p>
+        </div>
+        <button
+          class="btn outline"
+          type="button"
+          hx-get="/_proxy/dashboard/accounts"
+          hx-target="#dashboard-accounts"
+          hx-swap="innerHTML"
+        >
+          Refresh
+        </button>
+      </div>
+    </header>
+    <section>
+      <div class="grid gap-4">
+        {% if accounts_notice %}
+        <p>{{ accounts_notice }}</p>
+        {% endif %}
+        {% if accounts_error %}
+        <p>{{ accounts_error }}</p>
+        {% endif %}
+
+        <div class="card">
+          <header>
+            <h3>Login via browser</h3>
+            <p>Sign in with {{ openai_provider.label }} using your browser.</p>
+          </header>
+          <section>
+            <form
+              hx-post="/_proxy/dashboard/accounts/browser/start"
+              hx-target="#dashboard-accounts"
+              hx-swap="innerHTML"
+            >
+              <div class="grid gap-4">
+                <label>
+                  <span>Label</span>
+                  <input
+                    type="text"
+                    name="label"
+                    value="{{ account_add_label }}"
+                    placeholder="Optional account label"
+                  />
+                </label>
+                <div class="flex items-center gap-4">
+                  <button class="btn" type="submit">Start browser login</button>
+                  <p>Get a link to open in your browser.</p>
+                </div>
+              </div>
+            </form>
+
+            {% if browser_login_challenge %}
+            <div class="card">
+              <header>
+                <h4>Complete sign-in</h4>
+                <p>Open the URL, sign in, then click Complete below.</p>
+              </header>
+              <section>
+                <p><strong>Auth URL:</strong> <a href="{{ browser_login_challenge.authorize_url }}" target="_blank" rel="noreferrer">{{ browser_login_challenge.authorize_url }}</a> <button class="btn outline" type="button" data-copy-url="{{ browser_login_challenge.authorize_url }}" onclick="navigator.clipboard.writeText(this.dataset.copyUrl)">Copy</button></p>
+                <form
+                  hx-post="/_proxy/dashboard/accounts/browser/complete"
+                  hx-target="#dashboard-accounts"
+                  hx-swap="innerHTML"
+                >
+                  <input type="hidden" name="provider_id" value="{{ browser_login_challenge.provider_id }}" />
+                  <input type="hidden" name="authorize_url" value="{{ browser_login_challenge.authorize_url }}" />
+                  <input type="hidden" name="redirect_uri" value="{{ browser_login_challenge.redirect_uri }}" />
+                  <input type="hidden" name="code_verifier" value="{{ browser_login_challenge.code_verifier }}" />
+                  <input type="hidden" name="state" value="{{ browser_login_challenge.state }}" />
+                  <input type="hidden" name="issuer" value="{{ browser_login_challenge.issuer }}" />
+                  <input type="hidden" name="token_url" value="{{ browser_login_challenge.token_url }}" />
+                  <input type="hidden" name="client_id" value="{{ browser_login_challenge.client_id }}" />
+                  <input type="hidden" name="label" value="{{ browser_login_challenge.label }}" />
+                  <div class="flex items-center gap-4">
+                    <button class="btn" type="submit">Complete sign-in</button>
+                    <p>After approving in your browser, click here.</p>
+                  </div>
+                </form>
+              </section>
+            </div>
+            {% endif %}
+          </section>
+        </div>
+
+        <div class="card">
+          <header>
+            <h3>Login via device code</h3>
+            <p>Sign in with {{ openai_provider.label }} using device login from any browser.</p>
+          </header>
+          <section>
+            <form
+              hx-post="/_proxy/dashboard/accounts/device/start"
+              hx-target="#dashboard-accounts"
+              hx-swap="innerHTML"
+            >
+              <div class="grid gap-4">
+                <label>
+                  <span>Label</span>
+                  <input
+                    type="text"
+                    name="label"
+                    value="{{ account_add_label }}"
+                    placeholder="Optional account label"
+                  />
+                </label>
+                <div class="flex items-center gap-4">
+                  <button class="btn" type="submit">Start device login</button>
+                  <p>Shows a verification link and code you can complete from any device.</p>
+                </div>
+              </div>
+            </form>
+
+            {% if device_login_challenge %}
+            <div class="card">
+              <header>
+                <h4>Finish sign-in</h4>
+                <p>Open the verification link, enter the code, then confirm here.</p>
+              </header>
+              <section>
+                <p><strong>Verification URL:</strong> <a href="{{ device_login_challenge.verification_url }}" target="_blank" rel="noreferrer">{{ device_login_challenge.verification_url }}</a> <button class="btn outline" type="button" onclick="navigator.clipboard.writeText('{{ device_login_challenge.verification_url }}')">Copy</button></p>
+                <p><strong>User code:</strong> {{ device_login_challenge.user_code }}</p>
+                <form
+                  hx-post="/_proxy/dashboard/accounts/device/poll"
+                  hx-target="#dashboard-accounts"
+                  hx-swap="innerHTML"
+                >
+                  <input type="hidden" name="provider_id" value="{{ device_login_challenge.provider_id }}" />
+                  <input type="hidden" name="device_auth_id" value="{{ device_login_challenge.device_auth_id }}" />
+                  <input type="hidden" name="user_code" value="{{ device_login_challenge.user_code }}" />
+                  <input type="hidden" name="verification_url" value="{{ device_login_challenge.verification_url }}" />
+                  <input type="hidden" name="poll_interval" value="{{ device_login_challenge.poll_interval }}" />
+                  <input type="hidden" name="issuer" value="{{ device_login_challenge.issuer }}" />
+                  <input type="hidden" name="token_url" value="{{ device_login_challenge.token_url }}" />
+                  <input type="hidden" name="client_id" value="{{ device_login_challenge.client_id }}" />
+                  <input type="hidden" name="label" value="{{ device_login_challenge.label }}" />
+                  <div class="flex items-center gap-4">
+                    <button class="btn" type="submit">Complete sign-in</button>
+                    <p>Use this after approving the device login in your browser.</p>
+                  </div>
+                </form>
+              </section>
+            </div>
+            {% endif %}
+          </section>
+        </div>
+
+      {% if accounts %}
+      <table>
+        <thead>
+          <tr>
+            <th>Label</th>
+            <th>Account</th>
+            <th>Provider</th>
+            <th>State</th>
+            <th>Cooldown until</th>
+            <th>Last error</th>
+            <th>Last used</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for account in accounts %}
+          <tr>
+            <td>{{ account.label or "—" }}</td>
+            <td>{{ account.account_id }}</td>
+            <td>{{ account.provider }}</td>
+            <td>
+              {% if account.active %}
+              active
+              {% elif account.eligible %}
+              eligible
+              {% elif account.enabled %}
+              cooldown
+              {% else %}
+              disabled
+              {% endif %}
+            </td>
+            <td>{{ account.cooldown_until or "—" }}</td>
+            <td>{{ account.last_proxy_error or "—" }}</td>
+            <td>{{ account.last_used or "—" }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p>No saved accounts.</p>
+      {% endif %}
+      </div>
+    </section>
+  </div>
+</div>

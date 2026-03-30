@@ -6,7 +6,7 @@ import pkgutil
 from typing import cast
 
 from punkrecords.models import AccountRecord
-from punkrecords.providers.contracts import AuthProvider, DeviceLoginChallenge, LocalRouteSpec, LoginResult, OAuthError, ProviderDescriptor, ProviderPlugin, ProxyProvider, UsageProvider
+from punkrecords.providers.contracts import AuthProvider, BrowserLoginChallenge, DeviceLoginChallenge, LocalRouteSpec, LoginResult, OAuthError, ProviderCapabilityProfile, ProviderDescriptor, ProviderPlugin, ProviderRoutingDecision, ProxyProvider, ProxyRequestSpec, UsageProvider
 
 def _load_builtin_providers() -> tuple[ProviderDescriptor, ...]:
     providers: list[ProviderDescriptor] = []
@@ -122,11 +122,15 @@ def all_local_routes() -> list[LocalRouteSpec]:
 
 
 __all__ = [
+    "BrowserLoginChallenge",
     "DeviceLoginChallenge",
     "LoginResult",
     "OAuthError",
+    "ProviderCapabilityProfile",
     "ProviderDescriptor",
     "ProviderPlugin",
+    "ProviderRoutingDecision",
+    "ProxyRequestSpec",
     "all_local_routes",
     "get_account_provider",
     "get_provider",

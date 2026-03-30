@@ -29,6 +29,19 @@ class DeviceLoginChallenge:
     label: str | None = None
 
 
+@dataclass
+class BrowserLoginChallenge:
+    provider_id: str
+    authorize_url: str
+    redirect_uri: str
+    code_verifier: str
+    state: str
+    issuer: str
+    token_url: str
+    client_id: str
+    label: str | None = None
+
+
 UsageSummary = dict[str, int | None]
 
 
@@ -50,6 +63,20 @@ class ProxyRequestSpec:
 class LocalRouteSpec:
     path: str
     method: str = "POST"
+
+
+@dataclass(frozen=True)
+class ProviderCapabilityProfile:
+    model_ids: tuple[str, ...] = ()
+    supports_streaming: bool = True
+    supports_tools: bool = True
+    supports_embeddings: bool = False
+
+
+@dataclass(frozen=True)
+class ProviderRoutingDecision:
+    allow_fallback: bool
+    reason: str = ""
 
 
 class ProviderPlugin(Protocol):
@@ -105,6 +132,10 @@ class ProxyProvider(Protocol):
     def list_models(self) -> dict[str, Any]: ...
 
     def classify_proxy_failure(self, status_code: int, body: bytes) -> tuple[bool, int]: ...
+
+    def classify_routing_failure(self, status_code: int, body: bytes) -> ProviderRoutingDecision: ...
+
+    def capability_profile(self) -> ProviderCapabilityProfile: ...
 
     def describe_local_routes(self, *, base_url: str) -> list[tuple[str, str]]: ...
 
