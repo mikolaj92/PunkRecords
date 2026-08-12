@@ -10,6 +10,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 
 models_module = importlib.import_module("punkrecords.models")
 oauth_module = importlib.import_module("punkrecords.oauth")
@@ -247,9 +248,17 @@ def test_proxy_openapi_docs_and_dashboard(monkeypatch, tmp_path):
         with urllib.request.urlopen(f"http://localhost:{server.server_port}/", timeout=5) as response:
             dashboard_html = response.read().decode()
         assert response.status == 200
-        assert "<main id=\"page-content\">" in dashboard_html
+        assert 'id="main-content"' in dashboard_html
+        assert 'id="app-main"' in dashboard_html
         assert "hx-get=\"/_proxy/dashboard/overview\"" in dashboard_html
         assert "chart.js" in dashboard_html.lower()
+        assert "/static/platform/" in dashboard_html
+        assert "unpkg.com" not in dashboard_html
+        assert "basecoat-css@" not in dashboard_html
+        assert "basecoat.min.js" not in dashboard_html
+        assert "data-platform-theme-locale" in dashboard_html
+        assert 'id="sidebar"' in dashboard_html
+        assert 'action="/logout"' not in dashboard_html
 
         try:
             urllib.request.urlopen(f"http://localhost:{server.server_port}/_proxy/dashboard", timeout=5)
@@ -301,6 +310,55 @@ def test_proxy_openapi_docs_and_dashboard(monkeypatch, tmp_path):
             settings_html = response.read().decode()
         assert "Save settings" in settings_html
         assert "<body" not in settings_html.lower()
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_platform_stack_smoke_and_shell_contract(monkeypatch, tmp_path):
+    monkeypatch.setenv("PUNKRECORDS_HOME", str(tmp_path / "manager"))
+    repo = AccountRepository()
+    server = ProxyServer(("localhost", _free_port()), ProxyHandler, repo)
+    _start_server(server)
+    try:
+        with urllib.request.urlopen(f"http://localhost:{server.server_port}/", timeout=5) as response:
+            html = response.read().decode()
+        assert response.status == 200
+        for asset in (
+            "/static/platform/basecoat-factory.min.css",
+            "/static/platform/basecoat-js.min.js",
+            "/static/platform/htmx.min.js",
+            "/static/platform/alpine.min.js",
+        ):
+            assert asset in html
+            with urllib.request.urlopen(f"http://localhost:{server.server_port}{asset}", timeout=5) as asset_response:
+                assert asset_response.status == 200
+
+        assert "unpkg.com" not in html
+        assert "htmx.org@" not in html
+        assert "basecoat-css@" not in html
+        assert "data-platform-theme-locale" in html
+        assert "data-platform-auth" in html
+        assert 'action="/logout"' not in html
+        assert 'href="/_proxy/admin/state"' in html
+        assert 'href="/_proxy/stats/summary"' in html
+
+        base = (Path(__file__).resolve().parents[1] / "src/punkrecords/templates/base.html").read_text(encoding="utf-8")
+        assert 'extends "app_factory/product_shell.html"' in base
+        assert "cdn.jsdelivr.net/npm/basecoat" not in base
+        assert "unpkg.com" not in base
+        assert "partials/sidebar.html" not in base
+        assert "platform_theme_locale" not in base
+        assert "platform_sidebar" not in base
+        assert "platform_session" not in base
+
+        sidebar = Path(__file__).resolve().parents[1] / "src/punkrecords/templates/partials/sidebar.html"
+        assert not sidebar.exists()
+
+        pyproject = (Path(__file__).resolve().parents[1] / "pyproject.toml").read_text(encoding="utf-8")
+        assert 'tag = "v0.5.24"' in pyproject
+        assert 'tag = "v0.3.25"' in pyproject
+        assert 'tag = "v0.4.5"' in pyproject
     finally:
         server.shutdown()
         server.server_close()

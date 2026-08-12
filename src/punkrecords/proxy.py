@@ -27,9 +27,13 @@ StreamingResponse = fastapi_responses_module.StreamingResponse
 Jinja2Templates = fastapi_templating_module.Jinja2Templates
 StarletteHTTPException = starlette_exceptions_module.HTTPException
 
+from app_factory.cdn import extend_manifest, install_manifest
+from app_factory.platform import install_platform
+
 from .failover import extract_retry_after
 from .oauth import complete_browser_login, poll_device_login, start_browser_login, start_device_login, wait_browser_login_callback
 from .paths import app_home
+from .platform_chrome import PLATFORM_CONFIG, platform_request_context
 from .providers import BrowserLoginChallenge, DeviceLoginChallenge, OAuthError, all_local_routes, get_account_provider, get_provider, list_providers, providers_for_local_route, require_auth_provider, require_proxy_provider, require_usage_provider, supported_provider_metadata
 from .routing import ordered_provider_ids, should_fallback_to_next_provider
 from .settings_store import load_settings, update_settings, validate_settings_payload
@@ -560,7 +564,9 @@ def _stream_generator(repo: AccountRepository, result: StreamProxyResult, starte
 def create_app(repo: AccountRepository, *, max_attempts: int | None = None) -> FastAPI:
     attempts = max_attempts or _proxy_max_attempts_env()
     app = FastAPI()
+    install_manifest(extend_manifest(["chartjs"]))
     templates = Jinja2Templates(directory=str(_template_root()))
+    install_platform(app, environments=[templates.env], config=PLATFORM_CONFIG)
 
     @app.exception_handler(StarletteHTTPException)
     async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:  # type: ignore[override]
@@ -662,7 +668,9 @@ def create_app(repo: AccountRepository, *, max_attempts: int | None = None) -> F
             name="dashboard.html",
             context={
                 "page_title": "Dashboard",
+                "nav_active": "dashboard",
                 "provider_metadata": supported_provider_metadata(),
+                **platform_request_context(current_path=request.url.path),
             },
         )
 
