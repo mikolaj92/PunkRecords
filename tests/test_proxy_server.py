@@ -289,7 +289,7 @@ def test_proxy_openapi_docs_and_dashboard(monkeypatch, tmp_path):
             accounts_html = response.read().decode()
         assert response.status == 200
         assert "Credentials" in accounts_html
-        assert "Add account" in accounts_html
+        assert "Start browser login" in accounts_html
         assert "Start device login" in accounts_html
         assert "complete from any device" in accounts_html
         assert "acct-1" in accounts_html
