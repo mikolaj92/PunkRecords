@@ -60,6 +60,15 @@ You can override that root directory with the new primary environment variable:
 
 - `PUNKRECORDS_HOME=/path/to/home`
 
+## OpenAI Codex upstream configuration
+
+The built-in `openai-codex` provider resolves upstream URLs from one modern path:
+
+- `PUNKRECORDS_OPENAI_CODEX_PROXY_UPSTREAM_BASE` — base URL prepended with the mapped route path (default: `https://chatgpt.com/backend-api/codex`)
+- `PUNKRECORDS_OPENAI_CODEX_PROXY_UPSTREAM_<ROUTE>_URL` — full URL override for one local route, where `<ROUTE>` is the local path with `/` replaced by `_` and uppercased (for example `PUNKRECORDS_OPENAI_CODEX_PROXY_UPSTREAM_V1_RESPONSES_URL` for `/v1/responses`)
+
+Route-specific overrides win over the base. There is no legacy `PUNKRECORDS_OPENAI_CODEX_PROXY_UPSTREAM_URL` fallback.
+
 ## Local proxy
 
 The proxy server is implemented with FastAPI and served through Uvicorn.

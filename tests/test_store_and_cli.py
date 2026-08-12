@@ -39,12 +39,13 @@ def _access_token(account_id: str, email: str) -> str:
     return f"header.{_jwt_segment(payload)}.sig"
 
 
-def make_account(account_id: str, label: str, email: str) -> AccountRecord:
+def make_account(account_id: str, label: str, email: str, *, provider: str = "openai-codex") -> AccountRecord:
     return AccountRecord(
         id=f"local-{account_id}",
         account_id=account_id,
         email=email,
         label=label,
+        provider=provider,
         created_at="2026-03-27T00:00:00Z",
         last_refresh="2026-03-27T00:00:00Z",
         last_used="2026-03-27T00:00:00Z",
@@ -101,23 +102,23 @@ def test_model_exposes_credential_aliases():
     assert account.auth_mode == "api-key"
 
 
-def test_repository_load_migrates_missing_provider_to_legacy_builtin(tmp_path):
+def test_repository_load_rejects_missing_provider(tmp_path):
     path = tmp_path / "accounts.json"
     path.write_text(
         json.dumps(
             {
                 "version": 1,
-                "active_account_id": "local-acct-legacy",
+                "active_account_id": "local-acct-missing-provider",
                 "accounts": [
                     {
-                        "id": "local-acct-legacy",
-                        "account_id": "acct-legacy",
-                        "email": "legacy@example.com",
-                        "label": "legacy",
+                        "id": "local-acct-missing-provider",
+                        "account_id": "acct-missing-provider",
+                        "email": "missing@example.com",
+                        "label": "missing-provider",
                         "tokens": {
                             "access_token": "access",
                             "refresh_token": "refresh",
-                            "account_id": "acct-legacy",
+                            "account_id": "acct-missing-provider",
                         },
                     }
                 ],
@@ -126,8 +127,25 @@ def test_repository_load_migrates_missing_provider_to_legacy_builtin(tmp_path):
     )
 
     repo = AccountRepository(path)
-    account = repo.list_accounts()[0]
-    assert account.provider == "openai-codex"
+    try:
+        repo.load()
+    except ValueError as exc:
+        assert "missing required field 'provider'" in str(exc)
+        assert "local-acct-missing-provider" in str(exc)
+    else:
+        raise AssertionError("Expected load to fail closed for accounts without provider")
+
+
+def test_repository_upsert_rejects_missing_provider(tmp_path):
+    repo = AccountRepository(tmp_path / "accounts.json")
+    account = make_account("acct-1", "work", "work@example.com", provider="")
+
+    try:
+        repo.upsert_account(account, make_active=True)
+    except ValueError as exc:
+        assert "missing required field 'provider'" in str(exc)
+    else:
+        raise AssertionError("Expected upsert to fail closed for accounts without provider")
 
 
 def test_repository_lists_credentials_per_provider(tmp_path):
@@ -151,6 +169,31 @@ def test_provider_registry_exposes_builtin_openai_codex():
     assert provider.provider_id == "openai-codex"
     assert provider.label == "OpenAI Codex"
     assert providers_module.supported_provider_metadata() == [{"id": "openai-codex", "label": "OpenAI Codex"}]
+
+
+def test_openai_codex_proxy_upstream_url_uses_modern_overrides_only(monkeypatch):
+    openai_codex = importlib.import_module("punkrecords.providers.openai_codex")
+
+    monkeypatch.delenv("PUNKRECORDS_OPENAI_CODEX_PROXY_UPSTREAM_BASE", raising=False)
+    monkeypatch.delenv("PUNKRECORDS_OPENAI_CODEX_PROXY_UPSTREAM_V1_RESPONSES_URL", raising=False)
+    monkeypatch.setenv("PUNKRECORDS_OPENAI_CODEX_PROXY_UPSTREAM_URL", "http://legacy.example/responses")
+
+    assert openai_codex.proxy_upstream_url("/v1/responses") == "https://chatgpt.com/backend-api/codex/responses"
+
+    monkeypatch.setenv(
+        "PUNKRECORDS_OPENAI_CODEX_PROXY_UPSTREAM_V1_RESPONSES_URL",
+        "http://modern.example/custom-responses",
+    )
+    assert openai_codex.proxy_upstream_url("/v1/responses") == "http://modern.example/custom-responses"
+
+    monkeypatch.delenv("PUNKRECORDS_OPENAI_CODEX_PROXY_UPSTREAM_V1_RESPONSES_URL", raising=False)
+    monkeypatch.setenv("PUNKRECORDS_OPENAI_CODEX_PROXY_UPSTREAM_BASE", "http://base.example/codex")
+    assert openai_codex.proxy_upstream_url("/v1/responses") == "http://base.example/codex/responses"
+    assert openai_codex.proxy_upstream_url("/v1/embeddings") == "http://base.example/codex/embeddings"
+    assert (
+        openai_codex.proxy_upstream_override_env_key("/v1/responses")
+        == "PUNKRECORDS_OPENAI_CODEX_PROXY_UPSTREAM_V1_RESPONSES_URL"
+    )
 
 
 def test_provider_registry_can_load_external_provider(monkeypatch):

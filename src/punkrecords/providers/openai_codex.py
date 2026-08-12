@@ -242,17 +242,16 @@ def proxy_upstream_base() -> str:
     return DEFAULT_CODEX_BASE_URL.rstrip("/")
 
 
-def proxy_upstream_url(local_path: str) -> str:
-    legacy_override = os.getenv("PUNKRECORDS_OPENAI_CODEX_PROXY_UPSTREAM_URL", "").strip()
-    if local_path == "/v1/responses" and legacy_override:
-        return legacy_override
+def proxy_upstream_override_env_key(local_path: str) -> str:
+    return f"PUNKRECORDS_OPENAI_CODEX_PROXY_UPSTREAM_{local_path.strip('/').replace('/', '_').upper()}_URL"
 
+
+def proxy_upstream_url(local_path: str) -> str:
     path = ROUTE_MAP.get(local_path)
     if not path:
         raise KeyError(local_path)
 
-    specific_key = f"PUNKRECORDS_OPENAI_CODEX_PROXY_UPSTREAM_{local_path.strip('/').replace('/', '_').upper()}_URL"
-    override = os.getenv(specific_key, "").strip()
+    override = os.getenv(proxy_upstream_override_env_key(local_path), "").strip()
     if override:
         return override
     return proxy_upstream_base() + path
