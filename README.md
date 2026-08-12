@@ -33,11 +33,24 @@ The provider system itself is plugin-based. Built-in plugins live in the reposit
 punkrecords proxy --host 0.0.0.0 --port 4141
 ```
 
+## Platform UI stack
+
+The operator dashboard uses the shared app-factory product shell (Basecoat + HTMX + Alpine) from same-origin `/static/platform/...`. Host templates extend `app_factory/product_shell.html` and supply menu data only — no forked sidebar/header/theme chrome.
+
+BOM pins follow [app-factory `COMPAT.md`](https://github.com/mikolaj92/app-factory/blob/v0.5.24/COMPAT.md):
+
+| Package | Tag |
+|---------|-----|
+| app-factory | `v0.5.24` |
+| my-auth | `v0.3.25` |
+| my-usermanager | `v0.4.5` |
+
+`my-auth` / `my-usermanager` are pinned for COMPAT alignment; passkey login and account/admin user routes are not wired in this host yet (admin access remains `PUNKRECORDS_ADMIN_TOKEN`). Chart.js is loaded through `app_factory.cdn` as an optional product extra.
+
 ## Development
 
 ```bash
-uv venv
-uv pip install -e . pytest
+uv sync --extra dev
 uv run pytest
 ```
 

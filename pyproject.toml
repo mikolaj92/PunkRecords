@@ -7,10 +7,13 @@ name = "punkrecords"
 version = "0.1.0"
 description = "PunkRecords plugin-based multi-account OAuth proxy runtime"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
+  "app-factory[platform]",
   "fastapi==0.135.2",
   "jinja2==3.1.6",
+  "my-auth[fastapi-htmx]",
+  "my-usermanager[fastapi,myauth]",
   "uvicorn==0.42.0",
 ]
 authors = [
@@ -18,8 +21,29 @@ authors = [
 ]
 keywords = ["proxy", "openai-compatible", "oauth", "providers", "cli"]
 
+[project.optional-dependencies]
+dev = [
+  "httpx>=0.27",
+  "pytest>=8",
+]
+
 [project.scripts]
 punkrecords = "punkrecords.cli:main"
+
+[tool.uv.sources]
+# Platform BOM from app-factory COMPAT.md (latest row):
+# app-factory v0.5.24 + my-auth v0.3.25 + my-usermanager v0.4.5
+app-factory = { git = "https://github.com/mikolaj92/app-factory", tag = "v0.5.24" }
+my-auth = { git = "https://github.com/mikolaj92/my-auth", tag = "v0.3.25" }
+my-usermanager = { git = "https://github.com/mikolaj92/my-usermanager", tag = "v0.4.5" }
+
+[tool.uv]
+# One resolved URL for transitive extras (my-usermanager[myauth], my-auth→app-factory, etc.)
+override-dependencies = [
+  "app-factory @ git+https://github.com/mikolaj92/app-factory.git@v0.5.24",
+  "my-auth @ git+https://github.com/mikolaj92/my-auth.git@v0.3.25",
+  "my-usermanager @ git+https://github.com/mikolaj92/my-usermanager.git@v0.4.5",
+]
 
 [tool.setuptools]
 package-dir = {"" = "src"}
