@@ -7,12 +7,14 @@ from pathlib import Path
 from .models import AccountRecord, StateSnapshot
 from .paths import accounts_path
 
-_LEGACY_PROVIDER_ID = "openai-codex"
 
-
-def _migrate_legacy_account_provider(account: AccountRecord) -> AccountRecord:
-    if not account.provider:
-        account.provider = _LEGACY_PROVIDER_ID
+def _require_account_provider(account: AccountRecord) -> AccountRecord:
+    if not str(account.provider or "").strip():
+        account_key = account.id or account.external_id or "<unknown>"
+        raise ValueError(
+            f"Account {account_key!r} is missing required field 'provider'. "
+            "Re-add the account through a provider login flow."
+        )
     return account
 
 
@@ -38,7 +40,7 @@ class AccountRepository:
         if not isinstance(data, dict):
             raise ValueError("State file must contain a JSON object")
         state = StateSnapshot.from_dict(data)
-        state.accounts = [_migrate_legacy_account_provider(account) for account in state.accounts]
+        state.accounts = [_require_account_provider(account) for account in state.accounts]
         return state
 
     def save(self, state: StateSnapshot) -> None:
@@ -88,6 +90,7 @@ class AccountRepository:
         raise KeyError(f"Unknown account: {ident}")
 
     def upsert_account(self, account: AccountRecord, *, make_active: bool = True) -> AccountRecord:
+        _require_account_provider(account)
         state = self.load()
         replacement_index = None
         for index, existing in enumerate(state.accounts):
@@ -112,6 +115,7 @@ class AccountRepository:
         return account
 
     def replace_account(self, account: AccountRecord, *, make_active: bool | None = None) -> AccountRecord:
+        _require_account_provider(account)
         state = self.load()
         replacement_index = None
         for index, existing in enumerate(state.accounts):

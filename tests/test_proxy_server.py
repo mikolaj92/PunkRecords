@@ -515,7 +515,7 @@ def test_proxy_can_fallback_across_providers(monkeypatch, tmp_path):
 
         upstream = ThreadingHTTPServer(("localhost", _free_port()), SuccessUpstreamHandler)
         _start_server(upstream)
-        monkeypatch.setenv("PUNKRECORDS_OPENAI_CODEX_PROXY_UPSTREAM_URL", f"http://localhost:{upstream.server_port}/responses")
+        monkeypatch.setenv("PUNKRECORDS_OPENAI_CODEX_PROXY_UPSTREAM_BASE", f"http://localhost:{upstream.server_port}")
         monkeypatch.setattr(reloaded_providers.require_auth_provider(reloaded_providers.get_provider("openai-codex")), "maybe_refresh_account", lambda account: account)
 
         server = reloaded_proxy.ProxyServer(("localhost", _free_port()), reloaded_proxy.ProxyHandler, repo)
@@ -1294,7 +1294,7 @@ def test_proxy_failover_to_second_account(monkeypatch, tmp_path):
     upstream = ThreadingHTTPServer(("localhost", _free_port()), FakeUpstreamHandler)
     _start_server(upstream)
 
-    monkeypatch.setenv("PUNKRECORDS_OPENAI_CODEX_PROXY_UPSTREAM_URL", f"http://localhost:{upstream.server_port}/responses")
+    monkeypatch.setenv("PUNKRECORDS_OPENAI_CODEX_PROXY_UPSTREAM_BASE", f"http://localhost:{upstream.server_port}")
     monkeypatch.setattr(providers_module.require_auth_provider(get_provider("openai-codex")), "maybe_refresh_account", lambda account: account)
 
     proxy = ProxyServer(("localhost", _free_port()), ProxyHandler, repo)
@@ -1332,7 +1332,7 @@ def test_proxy_persists_refreshed_tokens(monkeypatch, tmp_path):
 
     upstream = ThreadingHTTPServer(("localhost", _free_port()), SuccessUpstreamHandler)
     _start_server(upstream)
-    monkeypatch.setenv("PUNKRECORDS_OPENAI_CODEX_PROXY_UPSTREAM_URL", f"http://localhost:{upstream.server_port}/responses")
+    monkeypatch.setenv("PUNKRECORDS_OPENAI_CODEX_PROXY_UPSTREAM_BASE", f"http://localhost:{upstream.server_port}")
 
     def fake_refresh(account):
         account.tokens = models_module.AccountTokens(
