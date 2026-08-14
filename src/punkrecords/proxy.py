@@ -433,23 +433,31 @@ def _convert_response_if_needed(local_path: str, body: bytes) -> bytes:
     return json.dumps(converted).encode()
 
 
+def _perform_proxy_request(spec: Any, stream: bool = False, timeout: float = 60.0) -> tuple[int, Any, dict[str, str]]:
+    request = urllib.request.Request(spec.url, data=spec.data, headers=spec.headers, method=spec.method)
+    response = urllib.request.urlopen(request, timeout=timeout)
+    headers = dict(response.headers.items())
+    if stream:
+        return response.status, response, headers
+    body = response.read()
+    response.close()
+    return response.status, body, headers
+
+
 def _forward_request(local_path: str, account: Any, payload: dict[str, Any], idempotency_key: str) -> ProxyResult | StreamProxyResult:
     provider = require_proxy_provider(get_account_provider(account))
     stream = provider.is_streaming_request(payload)
     request_spec = provider.build_proxy_request(account, local_path=local_path, payload=payload, idempotency_key=idempotency_key)
-    request = urllib.request.Request(request_spec.url, data=request_spec.data, headers=request_spec.headers, method=request_spec.method)
     try:
-        response = urllib.request.urlopen(request, timeout=60.0)
-        headers = dict(response.headers.items())
+        status_code, payload_or_response, headers = _perform_proxy_request(request_spec, stream=stream, timeout=60.0)
+        headers = dict(headers)
         headers["X-Proxy-Account-Id"] = account.account_id
         if stream:
-            return StreamProxyResult(response.status, headers, response, account.account_id, account.id, account.provider, local_path)
+            return StreamProxyResult(status_code, headers, payload_or_response, account.account_id, account.id, account.provider, local_path)
 
-        body = response.read()
-        response.close()
-        body = _convert_response_if_needed(local_path, body)
+        body = _convert_response_if_needed(local_path, payload_or_response)
         usage = provider.proxy_extract_usage_from_body(body, local_path)
-        return ProxyResult(response.status, body, headers, account.provider, stream=False, usage=usage)
+        return ProxyResult(status_code, body, headers, account.provider, stream=False, usage=usage)
     except urllib.error.HTTPError as exc:
         headers = dict(exc.headers.items())
         headers["X-Proxy-Account-Id"] = account.account_id

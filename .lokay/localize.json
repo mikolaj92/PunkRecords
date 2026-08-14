@@ -1,0 +1,58 @@
+{
+  "paths": [
+    "pyproject.toml",
+    "src/punkrecords",
+    "README.md",
+    "src/punkrecords/oauth.py",
+    "src/punkrecords/__init__.py",
+    "src/punkrecords/cli.py",
+    "src/punkrecords/failover.py",
+    "src/punkrecords/models.py",
+    "src/punkrecords/paths.py",
+    "src/punkrecords/platform_chrome.py",
+    "src/punkrecords/providers/__init__.py",
+    "src/punkrecords/providers/contracts.py",
+    "src/punkrecords/providers/openai_codex.py",
+    "src/punkrecords/proxy.py",
+    "src/punkrecords/routing.py",
+    "src/punkrecords/settings_store.py",
+    "src/punkrecords/stats_store.py",
+    "src/punkrecords/store.py",
+    "src/punkrecords/transforms.py",
+    "src/punkrecords/usage.py",
+    "src/punkrecords/providers",
+    "src/punkrecords/templates",
+    "src/punkrecords/templates/base.html",
+    "src/punkrecords/templates/dashboard.html",
+    "src/punkrecords/templates/partials",
+    "src/punkrecords/templates/partials/dashboard_accounts.html",
+    "src/punkrecords/templates/partials/dashboard_charts.html",
+    "src/punkrecords/templates/partials/dashboard_overview.html",
+    "src/punkrecords/templates/partials/dashboard_requests.html",
+    "src/punkrecords/templates/partials/dashboard_settings.html",
+    "tests/mock_oauth_server.py",
+    "tests/__init__.py",
+    "tests/test_proxy_server.py",
+    "tests/test_store_and_cli.py",
+    "src",
+    "tests"
+  ],
+  "source": "deterministic",
+  "seed_paths": [
+    "pyproject.toml"
+  ],
+  "matched_tokens": [
+    "pyproject",
+    "README",
+    "auth",
+    "PunkRecords"
+  ],
+  "notes": [
+    "Agentless-style localization: deterministic paths only (no embeddings).",
+    "Empty path list fails closed — run_agent must not start.",
+    "Repo tree entries considered: 63."
+  ],
+  "worktree": "/Users/mini-m4-main/.lokay/worktrees/mikolaj92__PunkRecords/ai__fix__21-bom-pin-w-v0.5.24-vs-compat-v0.6.5-extra-ca54e5b1",
+  "wrote": false,
+  "localize_rel": ".lokay/localize.json"
+}
