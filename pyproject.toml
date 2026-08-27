@@ -32,16 +32,15 @@ punkrecords = "punkrecords.cli:main"
 
 [tool.uv.sources]
 # Platform BOM from app-factory COMPAT.md (latest row):
-# app-factory v0.6.5 + my-auth v0.4.2 + my-usermanager v0.5.4
-app-factory = { git = "https://github.com/mikolaj92/app-factory", tag = "v0.6.5" }
-my-auth = { git = "https://github.com/mikolaj92/my-auth", tag = "v0.4.2" }
-my-usermanager = { git = "https://github.com/mikolaj92/my-usermanager", tag = "v0.5.4" }
+# app-factory v0.6.10 + my-auth v0.4.5 + my-usermanager v0.5.6
+app-factory = { git = "https://github.com/mikolaj92/app-factory", tag = "v0.6.10" }
+my-auth = { git = "https://github.com/mikolaj92/my-auth", tag = "v0.4.5" }
+my-usermanager = { git = "https://github.com/mikolaj92/my-usermanager", tag = "v0.5.6" }
 
 [tool.uv]
-# Nested adapter uv.sources pin older app-factory tags
-# (UM v0.5.4 sources app-factory@v0.6.4; my-auth v0.4.2 sources
-# app-factory@v0.6.3). Override app-factory only. Do not override
-# my-auth — UM v0.5.4 already nests my-auth@v0.4.2.
+# Nested adapter uv.sources still declare app-factory@v0.6.6
+# (UM v0.5.6 / my-auth v0.4.5). Override app-factory only. Do not
+# override my-auth — UM v0.5.6 already nests my-auth@v0.4.5.
 override-dependencies = [
   "app-factory[platform]",
 ]
