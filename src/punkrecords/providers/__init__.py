@@ -3,10 +3,24 @@ from __future__ import annotations
 import importlib
 import os
 import pkgutil
-from typing import cast
 
 from punkrecords.models import AccountRecord
-from punkrecords.providers.contracts import AuthProvider, BrowserLoginChallenge, DeviceLoginChallenge, LocalRouteSpec, LoginResult, OAuthError, ProviderCapabilityProfile, ProviderDescriptor, ProviderPlugin, ProviderRoutingDecision, ProxyProvider, ProxyRequestSpec, UsageProvider
+from punkrecords.providers.contracts import (
+    AuthProvider,
+    BrowserLoginChallenge,
+    DeviceLoginChallenge,
+    LocalRouteSpec,
+    LoginResult,
+    OAuthError,
+    ProviderCapabilityProfile,
+    ProviderDescriptor,
+    ProviderPlugin,
+    ProviderRoutingDecision,
+    ProxyProvider,
+    ProxyRequestSpec,
+    UsageProvider,
+)
+
 
 def _load_builtin_providers() -> tuple[ProviderDescriptor, ...]:
     providers: list[ProviderDescriptor] = []
@@ -22,7 +36,11 @@ def _load_builtin_providers() -> tuple[ProviderDescriptor, ...]:
 
 
 def _load_external_providers() -> tuple[ProviderDescriptor, ...]:
-    modules = [item.strip() for item in os.getenv("PUNKRECORDS_PROVIDER_MODULES", "").split(",") if item.strip()]
+    modules = [
+        item.strip()
+        for item in os.getenv("PUNKRECORDS_PROVIDER_MODULES", "").split(",")
+        if item.strip()
+    ]
     providers: list[ProviderDescriptor] = []
     for module_name in modules:
         module = importlib.import_module(module_name)
@@ -35,7 +53,9 @@ def _load_external_providers() -> tuple[ProviderDescriptor, ...]:
 
 _BUILTIN_PROVIDERS: tuple[ProviderDescriptor, ...] = _load_builtin_providers()
 _EXTERNAL_PROVIDERS: tuple[ProviderDescriptor, ...] = _load_external_providers()
-_ALL_PROVIDERS: tuple[ProviderDescriptor, ...] = _BUILTIN_PROVIDERS + _EXTERNAL_PROVIDERS
+_ALL_PROVIDERS: tuple[ProviderDescriptor, ...] = (
+    _BUILTIN_PROVIDERS + _EXTERNAL_PROVIDERS
+)
 _PROVIDER_IDS = [provider.provider_id for provider in _ALL_PROVIDERS]
 if len(_PROVIDER_IDS) != len(set(_PROVIDER_IDS)):
     raise ValueError("Duplicate provider_id values detected in provider registry")
@@ -68,13 +88,17 @@ def get_account_provider(account: AccountRecord) -> ProviderDescriptor:
 
 def require_auth_provider(provider: ProviderDescriptor | AuthProvider) -> AuthProvider:
     auth = getattr(provider, "auth", None)
-    if auth is not None:
+    if isinstance(auth, AuthProvider):
         return auth
     provider_id = getattr(provider, "provider_id", "unknown")
-    raise TypeError(f"Provider {provider_id} does not implement auth capability")
+    raise TypeError(
+        f"Provider {provider_id} does not implement the complete auth capability"
+    )
 
 
-def require_usage_provider(provider: ProviderDescriptor | UsageProvider) -> UsageProvider:
+def require_usage_provider(
+    provider: ProviderDescriptor | UsageProvider,
+) -> UsageProvider:
     usage = getattr(provider, "usage", None)
     if usage is not None:
         return usage
@@ -82,7 +106,9 @@ def require_usage_provider(provider: ProviderDescriptor | UsageProvider) -> Usag
     raise TypeError(f"Provider {provider_id} does not implement usage capability")
 
 
-def require_proxy_provider(provider: ProviderDescriptor | ProxyProvider) -> ProxyProvider:
+def require_proxy_provider(
+    provider: ProviderDescriptor | ProxyProvider,
+) -> ProxyProvider:
     proxy = getattr(provider, "proxy", None)
     if proxy is not None:
         return proxy
@@ -95,7 +121,10 @@ def list_providers() -> list[ProviderDescriptor]:
 
 
 def supported_provider_metadata() -> list[dict[str, str]]:
-    return [{"id": provider.provider_id, "label": provider.label} for provider in _ALL_PROVIDERS]
+    return [
+        {"id": provider.provider_id, "label": provider.label}
+        for provider in _ALL_PROVIDERS
+    ]
 
 
 def providers_for_local_route(path: str, method: str) -> list[ProviderDescriptor]:
@@ -117,7 +146,9 @@ def all_local_routes() -> list[LocalRouteSpec]:
         if provider.proxy is None:
             continue
         for route in provider.proxy.local_routes():
-            routes[(route.path, route.method.upper())] = LocalRouteSpec(path=route.path, method=route.method.upper())
+            routes[(route.path, route.method.upper())] = LocalRouteSpec(
+                path=route.path, method=route.method.upper()
+            )
     return sorted(routes.values(), key=lambda route: (route.path, route.method))
 
 

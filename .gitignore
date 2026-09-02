@@ -11,3 +11,5 @@ __pycache__/
 
 *.json.tmp
 .opencode/
+.tmp_*
+.lokay/
