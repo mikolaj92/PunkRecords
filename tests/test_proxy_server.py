@@ -15,6 +15,7 @@ from pathlib import Path
 models_module = importlib.import_module("punkrecords.models")
 oauth_module = importlib.import_module("punkrecords.oauth")
 proxy_module = importlib.import_module("punkrecords.proxy")
+dashboard_http_module = importlib.import_module("punkrecords.dashboard_http")
 providers_module = importlib.import_module("punkrecords.providers")
 settings_store_module = importlib.import_module("punkrecords.settings_store")
 stats_store_module = importlib.import_module("punkrecords.stats_store")
@@ -36,18 +37,20 @@ LoginResult = providers_module.LoginResult
 def _account(index: int, label: str, provider: str = "openai-codex") -> AccountRecord:
     return AccountRecord(
         id=f"local-{index}",
-        account_id=f"acct-{index}",
-        email=f"user{index}@example.com",
-        label=label,
+        external_id=f"acct-{index}",
+        contact=f"user{index}@example.com",
+        display_name=label,
         provider=provider,
         created_at="2026-03-27T00:00:00Z",
         last_refresh="2026-03-27T00:00:00Z",
         last_used="2026-03-27T00:00:00Z",
-        tokens=AccountTokens(
-            access_token=f"token-{index}",
-            refresh_token=f"refresh-{index}",
-            account_id=f"acct-{index}",
-        ),
+        provider_state={
+            "tokens": {
+                "access_token": f"token-{index}",
+                "refresh_token": f"refresh-{index}",
+                "account_id": f"acct-{index}",
+            }
+        },
     )
 
 
@@ -107,12 +110,16 @@ class EmbeddingsFailoverHandler(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
 
-        body = json.dumps({
-            "object": "list",
-            "data": [{"object": "embedding", "index": 0, "embedding": [0.1, 0.2, 0.3]}],
-            "model": "text-embedding-3-small",
-            "usage": {"prompt_tokens": 6, "total_tokens": 6},
-        }).encode()
+        body = json.dumps(
+            {
+                "object": "list",
+                "data": [
+                    {"object": "embedding", "index": 0, "embedding": [0.1, 0.2, 0.3]}
+                ],
+                "model": "text-embedding-3-small",
+                "usage": {"prompt_tokens": 6, "total_tokens": 6},
+            }
+        ).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
@@ -128,13 +135,25 @@ class SuccessUpstreamHandler(BaseHTTPRequestHandler):
         if self.path == "/embeddings":
             payload = {
                 "object": "list",
-                "data": [{"object": "embedding", "index": 0, "embedding": [0.1, 0.2, 0.3]}],
+                "data": [
+                    {"object": "embedding", "index": 0, "embedding": [0.1, 0.2, 0.3]}
+                ],
                 "model": "text-embedding-3-small",
                 "usage": {"prompt_tokens": 6, "total_tokens": 6},
             }
             body = json.dumps(payload).encode()
         else:
-            body = json.dumps({"ok": True, "account_id": self.headers.get("ChatGPT-Account-Id", ""), "usage": {"input_tokens": 12, "output_tokens": 8, "total_tokens": 20}}).encode()
+            body = json.dumps(
+                {
+                    "ok": True,
+                    "account_id": self.headers.get("ChatGPT-Account-Id", ""),
+                    "usage": {
+                        "input_tokens": 12,
+                        "output_tokens": 8,
+                        "total_tokens": 20,
+                    },
+                }
+            ).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
@@ -148,11 +167,11 @@ class StreamingUpstreamHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802
         body = (
-            'event: response.created\n'
+            "event: response.created\n"
             'data: {"type":"response.created"}\n\n'
-            'event: response.output_text.delta\n'
+            "event: response.output_text.delta\n"
             'data: {"type":"response.output_text.delta","delta":"Hel"}\n\n'
-            'event: response.completed\n'
+            "event: response.completed\n"
             'data: {"type":"response.completed","response":{"usage":{"input_tokens":9,"output_tokens":4,"total_tokens":13}}}\n\n'
         ).encode()
         self.send_response(200)
@@ -188,7 +207,9 @@ def test_proxy_healthz(monkeypatch, tmp_path):
     server = ProxyServer(("localhost", _free_port()), ProxyHandler, repo)
     _start_server(server)
     try:
-        with urllib.request.urlopen(f"http://localhost:{server.server_port}/healthz", timeout=5) as response:
+        with urllib.request.urlopen(
+            f"http://localhost:{server.server_port}/healthz", timeout=5
+        ) as response:
             payload = json.loads(response.read().decode())
         assert payload["ok"] is True
         assert payload["accounts"] == 1
@@ -206,10 +227,16 @@ def test_proxy_models_endpoint(monkeypatch, tmp_path):
     server = ProxyServer(("localhost", _free_port()), ProxyHandler, repo)
     _start_server(server)
     try:
-        with urllib.request.urlopen(f"http://localhost:{server.server_port}/v1/models", timeout=5) as response:
+        with urllib.request.urlopen(
+            f"http://localhost:{server.server_port}/v1/models", timeout=5
+        ) as response:
             payload = json.loads(response.read().decode())
         assert payload["object"] == "list"
-        assert [item["id"] for item in payload["data"]] == ["gpt-5.4", "gpt-5.4-mini", "text-embedding-3-small"]
+        assert [item["id"] for item in payload["data"]] == [
+            "gpt-5.4",
+            "gpt-5.4-mini",
+            "text-embedding-3-small",
+        ]
     finally:
         server.shutdown()
         server.server_close()
@@ -235,22 +262,28 @@ def test_proxy_openapi_docs_and_dashboard(monkeypatch, tmp_path):
     server = ProxyServer(("localhost", _free_port()), ProxyHandler, repo)
     _start_server(server)
     try:
-        with urllib.request.urlopen(f"http://localhost:{server.server_port}/openapi.json", timeout=5) as response:
+        with urllib.request.urlopen(
+            f"http://localhost:{server.server_port}/openapi.json", timeout=5
+        ) as response:
             payload = json.loads(response.read().decode())
         assert response.status == 200
         assert payload["openapi"] == "3.1.0"
         assert "/v1/responses" in payload["paths"]
 
-        with urllib.request.urlopen(f"http://localhost:{server.server_port}/docs", timeout=5) as response:
+        with urllib.request.urlopen(
+            f"http://localhost:{server.server_port}/docs", timeout=5
+        ) as response:
             html = response.read().decode()
         assert "Swagger UI" in html
 
-        with urllib.request.urlopen(f"http://localhost:{server.server_port}/", timeout=5) as response:
+        with urllib.request.urlopen(
+            f"http://localhost:{server.server_port}/", timeout=5
+        ) as response:
             dashboard_html = response.read().decode()
         assert response.status == 200
         assert 'id="main-content"' in dashboard_html
         assert 'id="app-main"' in dashboard_html
-        assert "hx-get=\"/_proxy/dashboard/overview\"" in dashboard_html
+        assert 'hx-get="/_proxy/dashboard/overview"' in dashboard_html
         assert "chart.js" in dashboard_html.lower()
         assert "/static/platform/" in dashboard_html
         assert "unpkg.com" not in dashboard_html
@@ -261,7 +294,9 @@ def test_proxy_openapi_docs_and_dashboard(monkeypatch, tmp_path):
         assert 'action="/logout"' not in dashboard_html
 
         try:
-            urllib.request.urlopen(f"http://localhost:{server.server_port}/_proxy/dashboard", timeout=5)
+            urllib.request.urlopen(
+                f"http://localhost:{server.server_port}/_proxy/dashboard", timeout=5
+            )
         except urllib.error.HTTPError as exc:
             assert exc.code == 404
             payload = json.loads(exc.read().decode())
@@ -269,7 +304,10 @@ def test_proxy_openapi_docs_and_dashboard(monkeypatch, tmp_path):
         else:
             raise AssertionError("Expected legacy dashboard route to be removed")
 
-        with urllib.request.urlopen(f"http://localhost:{server.server_port}/_proxy/dashboard/overview", timeout=5) as response:
+        with urllib.request.urlopen(
+            f"http://localhost:{server.server_port}/_proxy/dashboard/overview",
+            timeout=5,
+        ) as response:
             overview_html = response.read().decode()
         assert response.status == 200
         assert "Overview" in overview_html
@@ -278,14 +316,19 @@ def test_proxy_openapi_docs_and_dashboard(monkeypatch, tmp_path):
         assert "Output tokens" in overview_html
         assert "<html" not in overview_html.lower()
 
-        with urllib.request.urlopen(f"http://localhost:{server.server_port}/_proxy/dashboard/charts", timeout=5) as response:
+        with urllib.request.urlopen(
+            f"http://localhost:{server.server_port}/_proxy/dashboard/charts", timeout=5
+        ) as response:
             charts_html = response.read().decode()
         assert response.status == 200
         assert "Charts" in charts_html
         assert "data-chart-kind=" in charts_html
         assert "<html" not in charts_html.lower()
 
-        with urllib.request.urlopen(f"http://localhost:{server.server_port}/_proxy/dashboard/accounts", timeout=5) as response:
+        with urllib.request.urlopen(
+            f"http://localhost:{server.server_port}/_proxy/dashboard/accounts",
+            timeout=5,
+        ) as response:
             accounts_html = response.read().decode()
         assert response.status == 200
         assert "Credentials" in accounts_html
@@ -295,7 +338,10 @@ def test_proxy_openapi_docs_and_dashboard(monkeypatch, tmp_path):
         assert "acct-1" in accounts_html
         assert "<html" not in accounts_html.lower()
 
-        with urllib.request.urlopen(f"http://localhost:{server.server_port}/_proxy/dashboard/requests?limit=20", timeout=5) as response:
+        with urllib.request.urlopen(
+            f"http://localhost:{server.server_port}/_proxy/dashboard/requests?limit=20",
+            timeout=5,
+        ) as response:
             requests_html = response.read().decode()
         assert response.status == 200
         assert "<th>Input</th>" in requests_html
@@ -306,7 +352,10 @@ def test_proxy_openapi_docs_and_dashboard(monkeypatch, tmp_path):
         assert ">20<" in requests_html
         assert "<html" not in requests_html.lower()
 
-        with urllib.request.urlopen(f"http://localhost:{server.server_port}/_proxy/dashboard/settings", timeout=5) as response:
+        with urllib.request.urlopen(
+            f"http://localhost:{server.server_port}/_proxy/dashboard/settings",
+            timeout=5,
+        ) as response:
             settings_html = response.read().decode()
         assert "Save settings" in settings_html
         assert "<body" not in settings_html.lower()
@@ -321,7 +370,9 @@ def test_platform_stack_smoke_and_shell_contract(monkeypatch, tmp_path):
     server = ProxyServer(("localhost", _free_port()), ProxyHandler, repo)
     _start_server(server)
     try:
-        with urllib.request.urlopen(f"http://localhost:{server.server_port}/", timeout=5) as response:
+        with urllib.request.urlopen(
+            f"http://localhost:{server.server_port}/", timeout=5
+        ) as response:
             html = response.read().decode()
         assert response.status == 200
         for asset in (
@@ -331,19 +382,24 @@ def test_platform_stack_smoke_and_shell_contract(monkeypatch, tmp_path):
             "/static/platform/alpine.min.js",
         ):
             assert asset in html
-            with urllib.request.urlopen(f"http://localhost:{server.server_port}{asset}", timeout=5) as asset_response:
+            with urllib.request.urlopen(
+                f"http://localhost:{server.server_port}{asset}", timeout=5
+            ) as asset_response:
                 assert asset_response.status == 200
 
         assert "unpkg.com" not in html
         assert "htmx.org@" not in html
         assert "basecoat-css@" not in html
         assert "data-platform-theme-locale" in html
-        assert "data-platform-auth" in html
+        assert "data-platform-auth" not in html
+        assert 'href="/login"' not in html
         assert 'action="/logout"' not in html
         assert 'href="/_proxy/admin/state"' in html
         assert 'href="/_proxy/stats/summary"' in html
 
-        base = (Path(__file__).resolve().parents[1] / "src/punkrecords/templates/base.html").read_text(encoding="utf-8")
+        base = (
+            Path(__file__).resolve().parents[1] / "src/punkrecords/templates/base.html"
+        ).read_text(encoding="utf-8")
         assert 'extends "app_factory/product_shell.html"' in base
         assert "cdn.jsdelivr.net/npm/basecoat" not in base
         assert "unpkg.com" not in base
@@ -352,13 +408,18 @@ def test_platform_stack_smoke_and_shell_contract(monkeypatch, tmp_path):
         assert "platform_sidebar" not in base
         assert "platform_session" not in base
 
-        sidebar = Path(__file__).resolve().parents[1] / "src/punkrecords/templates/partials/sidebar.html"
+        sidebar = (
+            Path(__file__).resolve().parents[1]
+            / "src/punkrecords/templates/partials/sidebar.html"
+        )
         assert not sidebar.exists()
 
-        pyproject = (Path(__file__).resolve().parents[1] / "pyproject.toml").read_text(encoding="utf-8")
-        assert 'tag = "v0.6.10"' in pyproject
-        assert 'tag = "v0.4.5"' in pyproject
-        assert 'tag = "v0.5.6"' in pyproject
+        pyproject = (Path(__file__).resolve().parents[1] / "pyproject.toml").read_text(
+            encoding="utf-8"
+        )
+        assert 'tag = "v0.6.16"' in pyproject
+        assert 'tag = "v0.4.8"' in pyproject
+        assert 'tag = "v0.5.11"' in pyproject
         assert "my-usermanager[fastapi-htmx,myauth]" in pyproject
         assert "my-usermanager[fastapi,myauth]" not in pyproject
         assert '"app-factory[platform]"' in pyproject
@@ -367,7 +428,9 @@ def test_platform_stack_smoke_and_shell_contract(monkeypatch, tmp_path):
         server.server_close()
 
 
-def test_dashboard_accounts_device_flow_uses_existing_oauth_helpers(monkeypatch, tmp_path):
+def test_dashboard_accounts_device_flow_uses_existing_oauth_helpers(
+    monkeypatch, tmp_path
+):
     monkeypatch.setenv("PUNKRECORDS_HOME", str(tmp_path / "manager"))
     repo = AccountRepository()
 
@@ -391,11 +454,15 @@ def test_dashboard_accounts_device_flow_uses_existing_oauth_helpers(monkeypatch,
     def fake_poll_device_login(received_challenge):
         assert received_challenge == challenge
         account = _account(7, challenge.label or "browser")
-        account.label = challenge.label or account.label
+        account.display_name = challenge.label or account.display_name
         return LoginResult(account=account, base_url="https://chatgpt.com")
 
-    monkeypatch.setattr(proxy_module, "start_device_login", fake_start_device_login)
-    monkeypatch.setattr(proxy_module, "poll_device_login", fake_poll_device_login)
+    monkeypatch.setattr(
+        dashboard_http_module, "start_device_login", fake_start_device_login
+    )
+    monkeypatch.setattr(
+        dashboard_http_module, "poll_device_login", fake_poll_device_login
+    )
 
     server = ProxyServer(("localhost", _free_port()), ProxyHandler, repo)
     _start_server(server)
@@ -446,10 +513,10 @@ def test_dashboard_accounts_device_flow_uses_existing_oauth_helpers(monkeypatch,
 
         saved = repo.list_accounts()
         assert len(saved) == 1
-        assert saved[0].label == "Team account"
+        assert saved[0].display_name == "Team account"
         assert saved[0].provider == "openai-codex"
         assert repo.get_active() is not None
-        assert repo.get_active().account_id == "acct-7"
+        assert repo.get_active().external_id == "acct-7"
     finally:
         server.shutdown()
         server.server_close()
@@ -483,6 +550,15 @@ def test_proxy_can_fallback_across_providers(monkeypatch, tmp_path):
         def maybe_refresh_account(self, account):
             return account
 
+        def start_browser_login(self, *, label=None, redirect_uri=None):
+            raise NotImplementedError
+
+        def wait_browser_login_callback(self, state, timeout=300.0):
+            raise NotImplementedError
+
+        def complete_browser_login(self, challenge, authorization_code):
+            raise NotImplementedError
+
     @dataclass
     class FakeProxy:
         provider_id: str = "fake-external"
@@ -491,7 +567,9 @@ def test_proxy_can_fallback_across_providers(monkeypatch, tmp_path):
             return ("/v1/responses",)
 
         def local_routes(self):
-            return (providers_module.LocalRouteSpec(path="/v1/responses", method="POST"),)
+            return (
+                providers_module.LocalRouteSpec(path="/v1/responses", method="POST"),
+            )
 
         def parse_local_request(self, *, local_path, method, raw_body, headers):
             del headers
@@ -509,7 +587,12 @@ def test_proxy_can_fallback_across_providers(monkeypatch, tmp_path):
             return "https://example.invalid/fake"
 
         def build_proxy_request(self, account, *, local_path, payload, idempotency_key):
-            return providers_module.ProxyRequestSpec(url=self.proxy_upstream_url(local_path), data=b"{}", headers={"X-Test": idempotency_key}, method="POST")
+            return providers_module.ProxyRequestSpec(
+                url=self.proxy_upstream_url(local_path),
+                data=b"{}",
+                headers={"X-Test": idempotency_key},
+                method="POST",
+            )
 
         def proxy_headers(self, account, *, stream, idempotency_key):
             del account, stream
@@ -527,7 +610,11 @@ def test_proxy_can_fallback_across_providers(monkeypatch, tmp_path):
             del local_path
 
             class Tracker:
-                usage = {"input_tokens": None, "output_tokens": None, "total_tokens": None}
+                usage = {
+                    "input_tokens": None,
+                    "output_tokens": None,
+                    "total_tokens": None,
+                }
 
                 def feed(self, chunk):
                     del chunk
@@ -549,10 +636,19 @@ def test_proxy_can_fallback_across_providers(monkeypatch, tmp_path):
                 payload = {}
             error = payload.get("error") if isinstance(payload, dict) else None
             code = error.get("code") if isinstance(error, dict) else None
-            return providers_module.ProviderRoutingDecision(code in {"no_eligible_accounts", "all_accounts_failed"} or status_code >= 500, "fake-routing")
+            return providers_module.ProviderRoutingDecision(
+                code in {"no_eligible_accounts", "all_accounts_failed"}
+                or status_code >= 500,
+                "fake-routing",
+            )
 
         def capability_profile(self):
-            return providers_module.ProviderCapabilityProfile(model_ids=("gpt-5.4",), supports_streaming=True, supports_tools=True, supports_embeddings=False)
+            return providers_module.ProviderCapabilityProfile(
+                model_ids=("gpt-5.4",),
+                supports_streaming=True,
+                supports_tools=True,
+                supports_embeddings=False,
+            )
 
         def describe_local_routes(self, *, base_url):
             return [("Fake responses route", f"{base_url}/v1/responses")]
@@ -570,16 +666,31 @@ def test_proxy_can_fallback_across_providers(monkeypatch, tmp_path):
     reloaded_providers = importlib.reload(providers_module)
     reloaded_proxy = importlib.reload(proxy_module)
     try:
-        settings_store_module.save_settings({"routing": {"provider_order": ["fake-external", "openai-codex"]}})
+        settings_store_module.save_settings(
+            {"routing": {"provider_order": ["fake-external", "openai-codex"]}}
+        )
         repo = AccountRepository()
         repo.upsert_account(_account(1, "work"), make_active=True)
 
-        upstream = ThreadingHTTPServer(("localhost", _free_port()), SuccessUpstreamHandler)
+        upstream = ThreadingHTTPServer(
+            ("localhost", _free_port()), SuccessUpstreamHandler
+        )
         _start_server(upstream)
-        monkeypatch.setenv("PUNKRECORDS_OPENAI_CODEX_PROXY_UPSTREAM_BASE", f"http://localhost:{upstream.server_port}")
-        monkeypatch.setattr(reloaded_providers.require_auth_provider(reloaded_providers.get_provider("openai-codex")), "maybe_refresh_account", lambda account: account)
+        monkeypatch.setenv(
+            "PUNKRECORDS_OPENAI_CODEX_PROXY_UPSTREAM_BASE",
+            f"http://localhost:{upstream.server_port}",
+        )
+        monkeypatch.setattr(
+            reloaded_providers.require_auth_provider(
+                reloaded_providers.get_provider("openai-codex")
+            ),
+            "maybe_refresh_account",
+            lambda account: account,
+        )
 
-        server = reloaded_proxy.ProxyServer(("localhost", _free_port()), reloaded_proxy.ProxyHandler, repo)
+        server = reloaded_proxy.ProxyServer(
+            ("localhost", _free_port()), reloaded_proxy.ProxyHandler, repo
+        )
         _start_server(server)
         try:
             request = urllib.request.Request(
@@ -590,7 +701,11 @@ def test_proxy_can_fallback_across_providers(monkeypatch, tmp_path):
             )
             with urllib.request.urlopen(request, timeout=5) as response:
                 payload = json.loads(response.read().decode())
-            assert payload == {"ok": True, "account_id": "acct-1", "usage": {"input_tokens": 12, "output_tokens": 8, "total_tokens": 20}}
+            assert payload == {
+                "ok": True,
+                "account_id": "acct-1",
+                "usage": {"input_tokens": 12, "output_tokens": 8, "total_tokens": 20},
+            }
         finally:
             server.shutdown()
             server.server_close()
@@ -622,7 +737,9 @@ def test_proxy_request_transform_plugin_runs_before_upstream(monkeypatch, tmp_pa
         def transform(self, payload, context):
             updated = dict(payload)
             updated["input"] = f"prefixed::{payload.get('input', '')}"
-            return importlib.import_module("punkrecords.transforms").RequestTransformResult(
+            return importlib.import_module(
+                "punkrecords.transforms"
+            ).RequestTransformResult(
                 payload=updated,
                 applied=True,
                 annotations={"provider_id": context.provider_id},
@@ -630,7 +747,9 @@ def test_proxy_request_transform_plugin_runs_before_upstream(monkeypatch, tmp_pa
 
     setattr(transform_module, "REQUEST_TRANSFORM", PrefixTransform())
     sys.modules[transform_module.__name__] = transform_module
-    monkeypatch.setenv("PUNKRECORDS_REQUEST_TRANSFORM_MODULES", transform_module.__name__)
+    monkeypatch.setenv(
+        "PUNKRECORDS_REQUEST_TRANSFORM_MODULES", transform_module.__name__
+    )
 
     captured: dict[str, object] = {}
 
@@ -655,6 +774,15 @@ def test_proxy_request_transform_plugin_runs_before_upstream(monkeypatch, tmp_pa
         def maybe_refresh_account(self, account):
             return account
 
+        def start_browser_login(self, *, label=None, redirect_uri=None):
+            raise NotImplementedError
+
+        def wait_browser_login_callback(self, state, timeout=300.0):
+            raise NotImplementedError
+
+        def complete_browser_login(self, challenge, authorization_code):
+            raise NotImplementedError
+
     @dataclass
     class FakeProxy:
         provider_id: str = "fake-transform"
@@ -663,7 +791,9 @@ def test_proxy_request_transform_plugin_runs_before_upstream(monkeypatch, tmp_pa
             return ("/v1/responses",)
 
         def local_routes(self):
-            return (providers_module.LocalRouteSpec(path="/v1/responses", method="POST"),)
+            return (
+                providers_module.LocalRouteSpec(path="/v1/responses", method="POST"),
+            )
 
         def parse_local_request(self, *, local_path, method, raw_body, headers):
             del local_path, method, headers
@@ -673,7 +803,9 @@ def test_proxy_request_transform_plugin_runs_before_upstream(monkeypatch, tmp_pa
             return False
 
         def matches_request(self, local_path, payload):
-            return local_path == "/v1/responses" and isinstance(payload.get("input"), str)
+            return local_path == "/v1/responses" and isinstance(
+                payload.get("input"), str
+            )
 
         def proxy_upstream_url(self, local_path):
             return "https://example.invalid/fake"
@@ -681,7 +813,12 @@ def test_proxy_request_transform_plugin_runs_before_upstream(monkeypatch, tmp_pa
         def build_proxy_request(self, account, *, local_path, payload, idempotency_key):
             del account, local_path, idempotency_key
             captured["payload"] = dict(payload)
-            return providers_module.ProxyRequestSpec(url=self.proxy_upstream_url("/v1/responses"), data=json.dumps(payload).encode(), headers={"Content-Type": "application/json"}, method="POST")
+            return providers_module.ProxyRequestSpec(
+                url=self.proxy_upstream_url("/v1/responses"),
+                data=json.dumps(payload).encode(),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
 
         def proxy_headers(self, account, *, stream, idempotency_key):
             del account, stream, idempotency_key
@@ -694,13 +831,20 @@ def test_proxy_request_transform_plugin_runs_before_upstream(monkeypatch, tmp_pa
         def proxy_extract_usage_from_body(self, body, local_path):
             del local_path
             payload = json.loads(body.decode())
-            return payload.get("usage", {"input_tokens": None, "output_tokens": None, "total_tokens": None})
+            return payload.get(
+                "usage",
+                {"input_tokens": None, "output_tokens": None, "total_tokens": None},
+            )
 
         def create_stream_usage_tracker(self, local_path):
             del local_path
 
             class Tracker:
-                usage = {"input_tokens": None, "output_tokens": None, "total_tokens": None}
+                usage = {
+                    "input_tokens": None,
+                    "output_tokens": None,
+                    "total_tokens": None,
+                }
 
                 def feed(self, chunk):
                     del chunk
@@ -720,7 +864,12 @@ def test_proxy_request_transform_plugin_runs_before_upstream(monkeypatch, tmp_pa
             return providers_module.ProviderRoutingDecision(False, "done")
 
         def capability_profile(self):
-            return providers_module.ProviderCapabilityProfile(model_ids=(), supports_streaming=True, supports_tools=True, supports_embeddings=False)
+            return providers_module.ProviderCapabilityProfile(
+                model_ids=(),
+                supports_streaming=True,
+                supports_tools=True,
+                supports_embeddings=False,
+            )
 
         def describe_local_routes(self, *, base_url):
             return [("Transform responses route", f"{base_url}/v1/responses")]
@@ -738,15 +887,33 @@ def test_proxy_request_transform_plugin_runs_before_upstream(monkeypatch, tmp_pa
     reloaded_providers = importlib.reload(providers_module)
     reloaded_proxy = importlib.reload(proxy_module)
     try:
-        settings_store_module.save_settings({"routing": {"provider_order": ["fake-transform"]}})
+        settings_store_module.save_settings(
+            {"routing": {"provider_order": ["fake-transform"]}}
+        )
         repo = AccountRepository()
-        repo.upsert_account(_account(1, "work", provider="fake-transform"), make_active=True)
+        repo.upsert_account(
+            _account(1, "work", provider="fake-transform"), make_active=True
+        )
 
-        upstream = ThreadingHTTPServer(("localhost", _free_port()), SuccessUpstreamHandler)
+        upstream = ThreadingHTTPServer(
+            ("localhost", _free_port()), SuccessUpstreamHandler
+        )
         _start_server(upstream)
-        monkeypatch.setattr(reloaded_proxy, "_perform_proxy_request", lambda spec, stream=False, timeout=60.0: (200, json.dumps({"ok": True, "echo": json.loads(spec.data.decode())}).encode(), {"Content-Type": "application/json"}))
+        monkeypatch.setattr(
+            reloaded_proxy,
+            "_perform_proxy_request",
+            lambda spec, stream=False, timeout=60.0: (
+                200,
+                json.dumps(
+                    {"ok": True, "echo": json.loads(spec.data.decode())}
+                ).encode(),
+                {"Content-Type": "application/json"},
+            ),
+        )
 
-        server = reloaded_proxy.ProxyServer(("localhost", _free_port()), reloaded_proxy.ProxyHandler, repo)
+        server = reloaded_proxy.ProxyServer(
+            ("localhost", _free_port()), reloaded_proxy.ProxyHandler, repo
+        )
         _start_server(server)
         try:
             request = urllib.request.Request(
@@ -852,14 +1019,31 @@ def test_apply_request_transforms_orders_plugins_and_collects_metrics(monkeypatc
         assert result.payload == {"input": "prefix::hello::suffix"}
         assert result.applied is True
         assert result.affects_routing is True
-        assert result.routing_hints == {"priority_delta": -10, "reason": "prompt-policy"}
+        assert result.routing_hints == {
+            "priority_delta": -10,
+            "reason": "prompt-policy",
+        }
         assert [trace.plugin_id for trace in result.traces] == ["prefix", "suffix"]
         assert result.annotations["plugins"] == ["prefix", "suffix"]
-        assert result.annotations["details"]["suffix"]["metrics"]["saved_tokens_estimate"] == 1
-        assert result.annotations["details"]["suffix"]["metrics"]["input_tokens_saved_estimate"] == 1
-        assert result.annotations["details"]["suffix"]["category"] == transforms_module.REQUEST_TRANSFORM_CATEGORY_RTK
+        assert (
+            result.annotations["details"]["suffix"]["metrics"]["saved_tokens_estimate"]
+            == 1
+        )
+        assert (
+            result.annotations["details"]["suffix"]["metrics"][
+                "input_tokens_saved_estimate"
+            ]
+            == 1
+        )
+        assert (
+            result.annotations["details"]["suffix"]["category"]
+            == transforms_module.REQUEST_TRANSFORM_CATEGORY_RTK
+        )
         assert result.annotations["details"]["prefix"]["affects_routing"] is True
-        assert result.annotations["details"]["prefix"]["routing_hints"] == {"priority_delta": -10, "reason": "prompt-policy"}
+        assert result.annotations["details"]["prefix"]["routing_hints"] == {
+            "priority_delta": -10,
+            "reason": "prompt-policy",
+        }
     finally:
         monkeypatch.delenv("PUNKRECORDS_REQUEST_TRANSFORM_MODULES", raising=False)
         sys.modules.pop(module.__name__, None)
@@ -900,7 +1084,9 @@ def test_apply_request_transforms_fail_open_continues(monkeypatch):
             del context
             updated = dict(payload)
             updated["input"] = f"{payload['input']}::ok"
-            return transforms_module.RequestTransformResult(payload=updated, applied=True)
+            return transforms_module.RequestTransformResult(
+                payload=updated, applied=True
+            )
 
     setattr(module, "REQUEST_TRANSFORMS", [WorkingTransform(), BrokenTransform()])
     sys.modules[module.__name__] = module
@@ -949,11 +1135,17 @@ def test_proxy_request_transform_fail_closed_returns_error(monkeypatch, tmp_path
 
     setattr(transform_module, "REQUEST_TRANSFORM", FailClosedTransform())
     sys.modules[transform_module.__name__] = transform_module
-    monkeypatch.setenv("PUNKRECORDS_REQUEST_TRANSFORM_MODULES", transform_module.__name__)
+    monkeypatch.setenv(
+        "PUNKRECORDS_REQUEST_TRANSFORM_MODULES", transform_module.__name__
+    )
 
     repo = AccountRepository()
     repo.upsert_account(_account(1, "work"), make_active=True)
-    monkeypatch.setattr(providers_module.require_auth_provider(get_provider("openai-codex")), "maybe_refresh_account", lambda account: account)
+    monkeypatch.setattr(
+        providers_module.require_auth_provider(get_provider("openai-codex")),
+        "maybe_refresh_account",
+        lambda account: account,
+    )
     proxy = ProxyServer(("localhost", _free_port()), ProxyHandler, repo)
     _start_server(proxy)
     try:
@@ -995,15 +1187,24 @@ def test_proxy_embeddings_and_stats(monkeypatch, tmp_path):
 
     upstream = ThreadingHTTPServer(("localhost", _free_port()), SuccessUpstreamHandler)
     _start_server(upstream)
-    monkeypatch.setenv("PUNKRECORDS_OPENAI_CODEX_PROXY_UPSTREAM_BASE", f"http://localhost:{upstream.server_port}")
-    monkeypatch.setattr(providers_module.require_auth_provider(get_provider("openai-codex")), "maybe_refresh_account", lambda account: account)
+    monkeypatch.setenv(
+        "PUNKRECORDS_OPENAI_CODEX_PROXY_UPSTREAM_BASE",
+        f"http://localhost:{upstream.server_port}",
+    )
+    monkeypatch.setattr(
+        providers_module.require_auth_provider(get_provider("openai-codex")),
+        "maybe_refresh_account",
+        lambda account: account,
+    )
 
     proxy = ProxyServer(("localhost", _free_port()), ProxyHandler, repo)
     _start_server(proxy)
     try:
         request = urllib.request.Request(
             f"http://localhost:{proxy.server_port}/v1/embeddings",
-            data=json.dumps({"input": "hello", "model": "text-embedding-3-small"}).encode(),
+            data=json.dumps(
+                {"input": "hello", "model": "text-embedding-3-small"}
+            ).encode(),
             headers={"Content-Type": "application/json"},
             method="POST",
         )
@@ -1012,7 +1213,9 @@ def test_proxy_embeddings_and_stats(monkeypatch, tmp_path):
         assert payload["model"] == "text-embedding-3-small"
         assert payload["usage"] == {"prompt_tokens": 6, "total_tokens": 6}
 
-        with urllib.request.urlopen(f"http://localhost:{proxy.server_port}/_proxy/stats/summary", timeout=5) as response:
+        with urllib.request.urlopen(
+            f"http://localhost:{proxy.server_port}/_proxy/stats/summary", timeout=5
+        ) as response:
             stats = json.loads(response.read().decode())
         assert stats["request_count"] == 1
         assert stats["input_tokens"] == 6
@@ -1032,17 +1235,28 @@ def test_proxy_embeddings_failover_to_second_account(monkeypatch, tmp_path):
     repo.upsert_account(_account(1, "work"), make_active=True)
     repo.upsert_account(_account(2, "backup"), make_active=False)
 
-    upstream = ThreadingHTTPServer(("localhost", _free_port()), EmbeddingsFailoverHandler)
+    upstream = ThreadingHTTPServer(
+        ("localhost", _free_port()), EmbeddingsFailoverHandler
+    )
     _start_server(upstream)
-    monkeypatch.setenv("PUNKRECORDS_OPENAI_CODEX_PROXY_UPSTREAM_BASE", f"http://localhost:{upstream.server_port}")
-    monkeypatch.setattr(providers_module.require_auth_provider(get_provider("openai-codex")), "maybe_refresh_account", lambda account: account)
+    monkeypatch.setenv(
+        "PUNKRECORDS_OPENAI_CODEX_PROXY_UPSTREAM_BASE",
+        f"http://localhost:{upstream.server_port}",
+    )
+    monkeypatch.setattr(
+        providers_module.require_auth_provider(get_provider("openai-codex")),
+        "maybe_refresh_account",
+        lambda account: account,
+    )
 
     proxy = ProxyServer(("localhost", _free_port()), ProxyHandler, repo)
     _start_server(proxy)
     try:
         request = urllib.request.Request(
             f"http://localhost:{proxy.server_port}/v1/embeddings",
-            data=json.dumps({"input": "hello", "model": "text-embedding-3-small"}).encode(),
+            data=json.dumps(
+                {"input": "hello", "model": "text-embedding-3-small"}
+            ).encode(),
             headers={"Content-Type": "application/json"},
             method="POST",
         )
@@ -1052,14 +1266,16 @@ def test_proxy_embeddings_failover_to_second_account(monkeypatch, tmp_path):
 
         active = repo.get_active()
         assert active is not None
-        assert active.account_id == "acct-2"
+        assert active.external_id == "acct-2"
 
         accounts = repo.list_accounts()
-        first = next(account for account in accounts if account.account_id == "acct-1")
+        first = next(account for account in accounts if account.external_id == "acct-1")
         assert first.cooldown_until is not None
         assert first.last_proxy_error is not None
 
-        with urllib.request.urlopen(f"http://localhost:{proxy.server_port}/_proxy/stats/summary", timeout=5) as response:
+        with urllib.request.urlopen(
+            f"http://localhost:{proxy.server_port}/_proxy/stats/summary", timeout=5
+        ) as response:
             stats = json.loads(response.read().decode())
         assert stats["request_count"] == 1
         assert stats["by_account"]["openai-codex:acct-2"] == 1
@@ -1079,7 +1295,9 @@ def test_proxy_stats_summary_contract(monkeypatch, tmp_path):
     server = ProxyServer(("localhost", _free_port()), ProxyHandler, repo)
     _start_server(server)
     try:
-        with urllib.request.urlopen(f"http://localhost:{server.server_port}/_proxy/stats/summary", timeout=5) as response:
+        with urllib.request.urlopen(
+            f"http://localhost:{server.server_port}/_proxy/stats/summary", timeout=5
+        ) as response:
             payload = json.loads(response.read().decode())
         assert payload == {
             "request_count": 0,
@@ -1103,12 +1321,16 @@ def test_proxy_admin_state_and_accounts(monkeypatch, tmp_path):
     repo = AccountRepository()
     repo.upsert_account(_account(1, "work"), make_active=True)
     repo.upsert_account(_account(2, "backup"), make_active=False)
-    repo.mark_proxy_failure("acct-2", error="deactivated_workspace", cooldown_seconds=300)
+    repo.mark_proxy_failure(
+        "acct-2", error="deactivated_workspace", cooldown_seconds=300
+    )
 
     server = ProxyServer(("localhost", _free_port()), ProxyHandler, repo)
     _start_server(server)
     try:
-        with urllib.request.urlopen(f"http://localhost:{server.server_port}/_proxy/admin/state", timeout=5) as response:
+        with urllib.request.urlopen(
+            f"http://localhost:{server.server_port}/_proxy/admin/state", timeout=5
+        ) as response:
             state = json.loads(response.read().decode())
         assert state["ok"] is True
         assert state["accounts_total"] == 2
@@ -1119,11 +1341,15 @@ def test_proxy_admin_state_and_accounts(monkeypatch, tmp_path):
         assert "stats" in state
         assert "settings" in state
 
-        with urllib.request.urlopen(f"http://localhost:{server.server_port}/_proxy/admin/accounts", timeout=5) as response:
+        with urllib.request.urlopen(
+            f"http://localhost:{server.server_port}/_proxy/admin/accounts", timeout=5
+        ) as response:
             payload = json.loads(response.read().decode())
         assert len(payload["data"]) == 2
         assert all("tokens" not in account for account in payload["data"])
-        backup = next(account for account in payload["data"] if account["account_id"] == "acct-2")
+        backup = next(
+            account for account in payload["data"] if account["account_id"] == "acct-2"
+        )
         assert backup["eligible"] is False
         assert backup["last_proxy_error"] == "deactivated_workspace"
     finally:
@@ -1138,8 +1364,15 @@ def test_proxy_admin_requests_and_settings(monkeypatch, tmp_path):
 
     upstream = ThreadingHTTPServer(("localhost", _free_port()), SuccessUpstreamHandler)
     _start_server(upstream)
-    monkeypatch.setenv("PUNKRECORDS_OPENAI_CODEX_PROXY_UPSTREAM_BASE", f"http://localhost:{upstream.server_port}")
-    monkeypatch.setattr(providers_module.require_auth_provider(get_provider("openai-codex")), "maybe_refresh_account", lambda account: account)
+    monkeypatch.setenv(
+        "PUNKRECORDS_OPENAI_CODEX_PROXY_UPSTREAM_BASE",
+        f"http://localhost:{upstream.server_port}",
+    )
+    monkeypatch.setattr(
+        providers_module.require_auth_provider(get_provider("openai-codex")),
+        "maybe_refresh_account",
+        lambda account: account,
+    )
 
     server = ProxyServer(("localhost", _free_port()), ProxyHandler, repo)
     _start_server(server)
@@ -1153,12 +1386,17 @@ def test_proxy_admin_requests_and_settings(monkeypatch, tmp_path):
         with urllib.request.urlopen(request, timeout=5):
             pass
 
-        with urllib.request.urlopen(f"http://localhost:{server.server_port}/_proxy/admin/requests?limit=10", timeout=5) as response:
+        with urllib.request.urlopen(
+            f"http://localhost:{server.server_port}/_proxy/admin/requests?limit=10",
+            timeout=5,
+        ) as response:
             history = json.loads(response.read().decode())
         assert len(history["data"]) == 1
         assert history["data"][0]["endpoint"] == "/v1/responses"
 
-        with urllib.request.urlopen(f"http://localhost:{server.server_port}/_proxy/admin/settings", timeout=5) as response:
+        with urllib.request.urlopen(
+            f"http://localhost:{server.server_port}/_proxy/admin/settings", timeout=5
+        ) as response:
             settings = json.loads(response.read().decode())
         assert settings["proxy"]["port"] == 4141
 
@@ -1180,7 +1418,7 @@ def test_proxy_admin_requests_and_settings(monkeypatch, tmp_path):
         with urllib.request.urlopen(dashboard_update, timeout=5) as response:
             settings_fragment = response.read().decode()
         assert "Settings saved." in settings_fragment
-        assert "value=\"5002\"" in settings_fragment
+        assert 'value="5002"' in settings_fragment
 
         bad_dashboard_update = urllib.request.Request(
             f"http://localhost:{server.server_port}/_proxy/dashboard/settings",
@@ -1199,15 +1437,23 @@ def test_proxy_admin_requests_and_settings(monkeypatch, tmp_path):
         )
         with urllib.request.urlopen(bad_dashboard_update, timeout=5) as response:
             settings_error_fragment = response.read().decode()
-        assert "settings.proxy.port must be an integer between 1 and 65535" in settings_error_fragment
-        assert "value=\"not-a-port\"" in settings_error_fragment
+        assert (
+            "settings.proxy.port must be an integer between 1 and 65535"
+            in settings_error_fragment
+        )
+        assert 'value="not-a-port"' in settings_error_fragment
 
-        with urllib.request.urlopen(f"http://localhost:{server.server_port}/_proxy/admin/settings", timeout=5) as response:
+        with urllib.request.urlopen(
+            f"http://localhost:{server.server_port}/_proxy/admin/settings", timeout=5
+        ) as response:
             dashboard_saved_settings = json.loads(response.read().decode())
         assert dashboard_saved_settings["proxy"]["port"] == 5002
         assert dashboard_saved_settings["proxy"]["max_attempts"] == 4
 
-        with urllib.request.urlopen(f"http://localhost:{server.server_port}/_proxy/dashboard/requests?limit=10", timeout=5) as response:
+        with urllib.request.urlopen(
+            f"http://localhost:{server.server_port}/_proxy/dashboard/requests?limit=10",
+            timeout=5,
+        ) as response:
             requests_fragment = response.read().decode()
         assert "/v1/responses" in requests_fragment
         assert "<html" not in requests_fragment.lower()
@@ -1264,7 +1510,9 @@ def test_proxy_admin_auth_token(monkeypatch, tmp_path):
     _start_server(server)
     try:
         try:
-            urllib.request.urlopen(f"http://localhost:{server.server_port}/_proxy/admin/state", timeout=5)
+            urllib.request.urlopen(
+                f"http://localhost:{server.server_port}/_proxy/admin/state", timeout=5
+            )
         except urllib.error.HTTPError as exc:
             payload = json.loads(exc.read().decode())
             assert exc.code == 401
@@ -1305,7 +1553,9 @@ def test_proxy_error_envelope_and_method_handling(monkeypatch, tmp_path):
             assert payload["error"]["code"] == "invalid_json"
             assert payload["error"]["type"] == "invalid_request_error"
 
-        get_request = urllib.request.Request(f"http://localhost:{server.server_port}/v1/responses", method="GET")
+        get_request = urllib.request.Request(
+            f"http://localhost:{server.server_port}/v1/responses", method="GET"
+        )
         try:
             urllib.request.urlopen(get_request, timeout=5)
         except urllib.error.HTTPError as exc:
@@ -1324,7 +1574,11 @@ def test_proxy_refresh_failure_returns_controlled_error(monkeypatch, tmp_path):
     repo = AccountRepository()
     repo.upsert_account(_account(1, "work"), make_active=True)
 
-    monkeypatch.setattr(providers_module.require_auth_provider(get_provider("openai-codex")), "maybe_refresh_account", lambda account: (_ for _ in ()).throw(OAuthError("refresh failed")))
+    monkeypatch.setattr(
+        providers_module.require_auth_provider(get_provider("openai-codex")),
+        "maybe_refresh_account",
+        lambda account: (_ for _ in ()).throw(OAuthError("refresh failed")),
+    )
 
     server = ProxyServer(("localhost", _free_port()), ProxyHandler, repo)
     _start_server(server)
@@ -1355,8 +1609,15 @@ def test_proxy_failover_to_second_account(monkeypatch, tmp_path):
     upstream = ThreadingHTTPServer(("localhost", _free_port()), FakeUpstreamHandler)
     _start_server(upstream)
 
-    monkeypatch.setenv("PUNKRECORDS_OPENAI_CODEX_PROXY_UPSTREAM_BASE", f"http://localhost:{upstream.server_port}")
-    monkeypatch.setattr(providers_module.require_auth_provider(get_provider("openai-codex")), "maybe_refresh_account", lambda account: account)
+    monkeypatch.setenv(
+        "PUNKRECORDS_OPENAI_CODEX_PROXY_UPSTREAM_BASE",
+        f"http://localhost:{upstream.server_port}",
+    )
+    monkeypatch.setattr(
+        providers_module.require_auth_provider(get_provider("openai-codex")),
+        "maybe_refresh_account",
+        lambda account: account,
+    )
 
     proxy = ProxyServer(("localhost", _free_port()), ProxyHandler, repo)
     _start_server(proxy)
@@ -1373,10 +1634,10 @@ def test_proxy_failover_to_second_account(monkeypatch, tmp_path):
 
         active = repo.get_active()
         assert active is not None
-        assert active.account_id == "acct-2"
+        assert active.external_id == "acct-2"
 
         accounts = repo.list_accounts()
-        first = next(account for account in accounts if account.account_id == "acct-1")
+        first = next(account for account in accounts if account.external_id == "acct-1")
         assert first.cooldown_until is not None
         assert first.last_proxy_error is not None
     finally:
@@ -1393,17 +1654,24 @@ def test_proxy_persists_refreshed_tokens(monkeypatch, tmp_path):
 
     upstream = ThreadingHTTPServer(("localhost", _free_port()), SuccessUpstreamHandler)
     _start_server(upstream)
-    monkeypatch.setenv("PUNKRECORDS_OPENAI_CODEX_PROXY_UPSTREAM_BASE", f"http://localhost:{upstream.server_port}")
+    monkeypatch.setenv(
+        "PUNKRECORDS_OPENAI_CODEX_PROXY_UPSTREAM_BASE",
+        f"http://localhost:{upstream.server_port}",
+    )
 
     def fake_refresh(account):
-        account.tokens = models_module.AccountTokens(
-            access_token="rotated-token",
-            refresh_token="rotated-refresh",
-            account_id=account.account_id,
-        )
+        account.provider_state["tokens"] = {
+            "access_token": "rotated-token",
+            "refresh_token": "rotated-refresh",
+            "account_id": account.external_id,
+        }
         return account
 
-    monkeypatch.setattr(providers_module.require_auth_provider(get_provider("openai-codex")), "maybe_refresh_account", fake_refresh)
+    monkeypatch.setattr(
+        providers_module.require_auth_provider(get_provider("openai-codex")),
+        "maybe_refresh_account",
+        fake_refresh,
+    )
 
     proxy = ProxyServer(("localhost", _free_port()), ProxyHandler, repo)
     _start_server(proxy)
@@ -1416,12 +1684,16 @@ def test_proxy_persists_refreshed_tokens(monkeypatch, tmp_path):
         )
         with urllib.request.urlopen(request, timeout=5) as response:
             payload = json.loads(response.read().decode())
-        assert payload == {"ok": True, "account_id": "acct-1", "usage": {"input_tokens": 12, "output_tokens": 8, "total_tokens": 20}}
+        assert payload == {
+            "ok": True,
+            "account_id": "acct-1",
+            "usage": {"input_tokens": 12, "output_tokens": 8, "total_tokens": 20},
+        }
 
         stored = repo.get_active()
         assert stored is not None
-        assert stored.tokens.access_token == "rotated-token"
-        assert stored.tokens.refresh_token == "rotated-refresh"
+        assert stored.provider_state["tokens"]["access_token"] == "rotated-token"
+        assert stored.provider_state["tokens"]["refresh_token"] == "rotated-refresh"
     finally:
         proxy.shutdown()
         proxy.server_close()
@@ -1436,8 +1708,15 @@ def test_proxy_responses_non_stream_and_stats(monkeypatch, tmp_path):
 
     upstream = ThreadingHTTPServer(("localhost", _free_port()), SuccessUpstreamHandler)
     _start_server(upstream)
-    monkeypatch.setenv("PUNKRECORDS_OPENAI_CODEX_PROXY_UPSTREAM_BASE", f"http://localhost:{upstream.server_port}")
-    monkeypatch.setattr(providers_module.require_auth_provider(get_provider("openai-codex")), "maybe_refresh_account", lambda account: account)
+    monkeypatch.setenv(
+        "PUNKRECORDS_OPENAI_CODEX_PROXY_UPSTREAM_BASE",
+        f"http://localhost:{upstream.server_port}",
+    )
+    monkeypatch.setattr(
+        providers_module.require_auth_provider(get_provider("openai-codex")),
+        "maybe_refresh_account",
+        lambda account: account,
+    )
 
     proxy = ProxyServer(("localhost", _free_port()), ProxyHandler, repo)
     _start_server(proxy)
@@ -1450,9 +1729,15 @@ def test_proxy_responses_non_stream_and_stats(monkeypatch, tmp_path):
         )
         with urllib.request.urlopen(request, timeout=5) as response:
             payload = json.loads(response.read().decode())
-        assert payload == {"ok": True, "account_id": "acct-1", "usage": {"input_tokens": 12, "output_tokens": 8, "total_tokens": 20}}
+        assert payload == {
+            "ok": True,
+            "account_id": "acct-1",
+            "usage": {"input_tokens": 12, "output_tokens": 8, "total_tokens": 20},
+        }
 
-        with urllib.request.urlopen(f"http://localhost:{proxy.server_port}/_proxy/stats/summary", timeout=5) as response:
+        with urllib.request.urlopen(
+            f"http://localhost:{proxy.server_port}/_proxy/stats/summary", timeout=5
+        ) as response:
             stats = json.loads(response.read().decode())
         assert stats["request_count"] == 1
         assert stats["input_tokens"] == 12
@@ -1473,8 +1758,15 @@ def test_proxy_chat_completions_and_stats(monkeypatch, tmp_path):
 
     upstream = ThreadingHTTPServer(("localhost", _free_port()), SuccessUpstreamHandler)
     _start_server(upstream)
-    monkeypatch.setenv("PUNKRECORDS_OPENAI_CODEX_PROXY_UPSTREAM_BASE", f"http://localhost:{upstream.server_port}")
-    monkeypatch.setattr(providers_module.require_auth_provider(get_provider("openai-codex")), "maybe_refresh_account", lambda account: account)
+    monkeypatch.setenv(
+        "PUNKRECORDS_OPENAI_CODEX_PROXY_UPSTREAM_BASE",
+        f"http://localhost:{upstream.server_port}",
+    )
+    monkeypatch.setattr(
+        providers_module.require_auth_provider(get_provider("openai-codex")),
+        "maybe_refresh_account",
+        lambda account: account,
+    )
 
     proxy = ProxyServer(("localhost", _free_port()), ProxyHandler, repo)
     _start_server(proxy)
@@ -1489,9 +1781,15 @@ def test_proxy_chat_completions_and_stats(monkeypatch, tmp_path):
             payload = json.loads(response.read().decode())
         assert payload["object"] == "chat.completion"
         assert payload["choices"][0]["message"]["role"] == "assistant"
-        assert payload["usage"] == {"prompt_tokens": 12, "completion_tokens": 8, "total_tokens": 20}
+        assert payload["usage"] == {
+            "prompt_tokens": 12,
+            "completion_tokens": 8,
+            "total_tokens": 20,
+        }
 
-        with urllib.request.urlopen(f"http://localhost:{proxy.server_port}/_proxy/stats/summary", timeout=5) as response:
+        with urllib.request.urlopen(
+            f"http://localhost:{proxy.server_port}/_proxy/stats/summary", timeout=5
+        ) as response:
             stats = json.loads(response.read().decode())
         assert stats["request_count"] == 1
         assert stats["input_tokens"] == 12
@@ -1510,17 +1808,28 @@ def test_proxy_streaming_passthrough_and_stats(monkeypatch, tmp_path):
     repo = AccountRepository()
     repo.upsert_account(_account(1, "work"), make_active=True)
 
-    upstream = ThreadingHTTPServer(("localhost", _free_port()), StreamingUpstreamHandler)
+    upstream = ThreadingHTTPServer(
+        ("localhost", _free_port()), StreamingUpstreamHandler
+    )
     _start_server(upstream)
-    monkeypatch.setenv("PUNKRECORDS_OPENAI_CODEX_PROXY_UPSTREAM_BASE", f"http://localhost:{upstream.server_port}")
-    monkeypatch.setattr(providers_module.require_auth_provider(get_provider("openai-codex")), "maybe_refresh_account", lambda account: account)
+    monkeypatch.setenv(
+        "PUNKRECORDS_OPENAI_CODEX_PROXY_UPSTREAM_BASE",
+        f"http://localhost:{upstream.server_port}",
+    )
+    monkeypatch.setattr(
+        providers_module.require_auth_provider(get_provider("openai-codex")),
+        "maybe_refresh_account",
+        lambda account: account,
+    )
 
     proxy = ProxyServer(("localhost", _free_port()), ProxyHandler, repo)
     _start_server(proxy)
     try:
         request = urllib.request.Request(
             f"http://localhost:{proxy.server_port}/v1/chat/completions",
-            data=json.dumps({"messages": [{"role": "user", "content": "hi"}], "stream": True}).encode(),
+            data=json.dumps(
+                {"messages": [{"role": "user", "content": "hi"}], "stream": True}
+            ).encode(),
             headers={"Content-Type": "application/json"},
             method="POST",
         )
@@ -1529,10 +1838,12 @@ def test_proxy_streaming_passthrough_and_stats(monkeypatch, tmp_path):
             content_type = response.headers.get("Content-Type")
 
         assert content_type == "text/event-stream"
-        assert 'event: response.output_text.delta' in body
-        assert 'event: response.completed' in body
+        assert "event: response.output_text.delta" in body
+        assert "event: response.completed" in body
 
-        with urllib.request.urlopen(f"http://localhost:{proxy.server_port}/_proxy/stats/summary", timeout=5) as response:
+        with urllib.request.urlopen(
+            f"http://localhost:{proxy.server_port}/_proxy/stats/summary", timeout=5
+        ) as response:
             stats = json.loads(response.read().decode())
         assert stats["request_count"] == 1
         assert stats["input_tokens"] == 9
@@ -1550,10 +1861,19 @@ def test_proxy_responses_streaming_passthrough_and_stats(monkeypatch, tmp_path):
     repo = AccountRepository()
     repo.upsert_account(_account(1, "work"), make_active=True)
 
-    upstream = ThreadingHTTPServer(("localhost", _free_port()), StreamingUpstreamHandler)
+    upstream = ThreadingHTTPServer(
+        ("localhost", _free_port()), StreamingUpstreamHandler
+    )
     _start_server(upstream)
-    monkeypatch.setenv("PUNKRECORDS_OPENAI_CODEX_PROXY_UPSTREAM_BASE", f"http://localhost:{upstream.server_port}")
-    monkeypatch.setattr(providers_module.require_auth_provider(get_provider("openai-codex")), "maybe_refresh_account", lambda account: account)
+    monkeypatch.setenv(
+        "PUNKRECORDS_OPENAI_CODEX_PROXY_UPSTREAM_BASE",
+        f"http://localhost:{upstream.server_port}",
+    )
+    monkeypatch.setattr(
+        providers_module.require_auth_provider(get_provider("openai-codex")),
+        "maybe_refresh_account",
+        lambda account: account,
+    )
 
     proxy = ProxyServer(("localhost", _free_port()), ProxyHandler, repo)
     _start_server(proxy)
@@ -1569,11 +1889,13 @@ def test_proxy_responses_streaming_passthrough_and_stats(monkeypatch, tmp_path):
             content_type = response.headers.get("Content-Type")
 
         assert content_type == "text/event-stream"
-        assert 'event: response.created' in body
-        assert 'event: response.output_text.delta' in body
-        assert 'event: response.completed' in body
+        assert "event: response.created" in body
+        assert "event: response.output_text.delta" in body
+        assert "event: response.completed" in body
 
-        with urllib.request.urlopen(f"http://localhost:{proxy.server_port}/_proxy/stats/summary", timeout=5) as response:
+        with urllib.request.urlopen(
+            f"http://localhost:{proxy.server_port}/_proxy/stats/summary", timeout=5
+        ) as response:
             stats = json.loads(response.read().decode())
         assert stats["request_count"] == 1
         assert stats["input_tokens"] == 9

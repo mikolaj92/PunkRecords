@@ -12,12 +12,24 @@ import urllib.parse
 import urllib.request
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any, BinaryIO, cast
+from typing import Any, cast
 
 from punkrecords.models import AccountRecord, AccountTokens, AccountUsage, UsageWindow
-from punkrecords.providers.contracts import BrowserLoginChallenge, DeviceLoginChallenge, LocalRouteSpec, LoginResult, OAuthError, ProviderCapabilityProfile, ProviderDescriptor, ProviderRoutingDecision, ProxyRequestSpec, StreamUsageTracker, UsageSummary
+from punkrecords.providers.contracts import (
+    BrowserLoginChallenge,
+    DeviceLoginChallenge,
+    LocalRouteSpec,
+    LoginResult,
+    OAuthError,
+    ProviderCapabilityProfile,
+    ProviderDescriptor,
+    ProviderRoutingDecision,
+    ProxyRequestSpec,
+    StreamUsageTracker,
+    UsageSummary,
+)
 
 DEFAULT_ISSUER = "https://auth.openai.com"
 DEFAULT_CODEX_BASE_URL = "https://chatgpt.com/backend-api/codex"
@@ -26,7 +38,9 @@ CODEX_OAUTH_TOKEN_URL = "https://auth.openai.com/oauth/token"
 REFRESH_SKEW_SECONDS = 120
 DEFAULT_CALLBACK_HOST = "localhost"
 DEFAULT_CALLBACK_PORT = 1455
-CODEX_OAUTH_SCOPES = "openid profile email offline_access api.connectors.read api.connectors.invoke"
+CODEX_OAUTH_SCOPES = (
+    "openid profile email offline_access api.connectors.read api.connectors.invoke"
+)
 DEFAULT_HEADERS = {
     "Accept": "application/json",
     "User-Agent": "punkrecords/0.1.0",
@@ -37,11 +51,15 @@ ROUTE_MAP = {
     "/v1/embeddings": "/embeddings",
 }
 
-_PENDING_BROWSER_LOGINS: dict[str, "BrowserCallbackServer"] = {}
+_PENDING_BROWSER_LOGINS: dict[str, BrowserCallbackServer] = {}
 
 
 class BrowserCallbackServer(ThreadingHTTPServer):
-    def __init__(self, server_address: tuple[str, int], handler_class: type[BaseHTTPRequestHandler]) -> None:
+    def __init__(
+        self,
+        server_address: tuple[str, int],
+        handler_class: type[BaseHTTPRequestHandler],
+    ) -> None:
         super().__init__(server_address, handler_class)
         self.expected_state = ""
         self.authorization_code: str | None = None
@@ -74,7 +92,7 @@ class OAuthCallbackHandler(BaseHTTPRequestHandler):
     def log_message(self, format: str, *args: object) -> None:
         return
 
-    def do_GET(self) -> None:  # noqa: N802
+    def do_GET(self) -> None:
         parsed = urllib.parse.urlparse(self.path)
         if parsed.path != "/auth/callback":
             self.send_response(404)
@@ -86,7 +104,9 @@ class OAuthCallbackHandler(BaseHTTPRequestHandler):
         state = str((query.get("state") or [""])[0]).strip()
 
         if not code:
-            self.callback_server.callback_error = "Missing authorization code in callback"
+            self.callback_server.callback_error = (
+                "Missing authorization code in callback"
+            )
             self.send_response(400)
             self.end_headers()
             self.wfile.write(b"Missing authorization code")
@@ -105,7 +125,9 @@ class OAuthCallbackHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"<html><body><h1>PunkRecords login complete</h1><p>You can return to the CLI.</p></body></html>")
+        self.wfile.write(
+            b"<html><body><h1>PunkRecords login complete</h1><p>You can return to the CLI.</p></body></html>"
+        )
         self.callback_server.callback_event.set()
 
 
@@ -130,7 +152,10 @@ def _form_post(url: str, payload: dict[str, str], timeout: float) -> dict[str, A
     request = urllib.request.Request(
         url,
         data=urllib.parse.urlencode(payload).encode(),
-        headers={**DEFAULT_HEADERS, "Content-Type": "application/x-www-form-urlencoded"},
+        headers={
+            **DEFAULT_HEADERS,
+            "Content-Type": "application/x-www-form-urlencoded",
+        },
         method="POST",
     )
     try:
@@ -157,22 +182,30 @@ def _extract_profile(tokens: dict[str, Any]) -> tuple[str, str]:
     claims = decode_access_token_claims(str(tokens.get("access_token") or ""))
     auth_claim = claims.get("https://api.openai.com/auth") or {}
     profile_claim = claims.get("https://api.openai.com/profile") or {}
-    account_id = str(tokens.get("account_id") or auth_claim.get("chatgpt_account_id") or "")
+    account_id = str(
+        tokens.get("account_id") or auth_claim.get("chatgpt_account_id") or ""
+    )
     email = str(profile_claim.get("email") or claims.get("email") or "")
     return account_id, email
 
 
-def _build_account(tokens: dict[str, Any], *, label: str | None, source: str) -> AccountRecord:
+def _build_account(
+    tokens: dict[str, Any], *, label: str | None, source: str
+) -> AccountRecord:
     access_token = str(tokens.get("access_token") or "").strip()
     refresh_token = str(tokens.get("refresh_token") or "").strip()
     if not access_token or not refresh_token:
-        raise OAuthError("Token exchange response missing access_token or refresh_token")
+        raise OAuthError(
+            "Token exchange response missing access_token or refresh_token"
+        )
 
-    account_id, email = _extract_profile({"access_token": access_token, "account_id": tokens.get("account_id")})
+    account_id, email = _extract_profile(
+        {"access_token": access_token, "account_id": tokens.get("account_id")}
+    )
     if not account_id:
         raise OAuthError("Could not determine account_id from OAuth response")
 
-    now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    now = datetime.now(UTC).isoformat().replace("+00:00", "Z")
     token_payload = {
         "access_token": access_token,
         "refresh_token": refresh_token,
@@ -180,28 +213,30 @@ def _build_account(tokens: dict[str, Any], *, label: str | None, source: str) ->
     }
     return AccountRecord(
         id=str(uuid.uuid4()),
-        account_id=account_id,
-        email=email,
-        label=label or email or account_id,
+        external_id=account_id,
+        contact=email,
+        display_name=label or email or account_id,
         provider="openai-codex",
         created_at=now,
         last_refresh=now,
         last_used=now,
-        auth_mode="chatgpt",
-        source=source,
-        provider_state={"tokens": token_payload, "auth_mode": "chatgpt"},
-        tokens=None,
+        auth_kind="chatgpt",
+        creation_source=source,
+        provider_state={"tokens": token_payload, "auth_kind": "chatgpt"},
     )
 
 
 def _provider_tokens(account: AccountRecord) -> AccountTokens:
-    provider_tokens = account.provider_state.get("tokens") if isinstance(account.provider_state, dict) else None
-    if isinstance(provider_tokens, dict):
-        access_token = str(provider_tokens.get("access_token") or "")
-        refresh_token = str(provider_tokens.get("refresh_token") or "")
-        account_id = str(provider_tokens.get("account_id") or account.account_id or (account.tokens.account_id if account.tokens is not None else ""))
-        return AccountTokens(access_token=access_token, refresh_token=refresh_token, account_id=account_id)
-    return account.tokens or AccountTokens()
+    provider_tokens = account.provider_state.get("tokens")
+    if not isinstance(provider_tokens, dict):
+        raise OAuthError(
+            "Account provider_state is missing the canonical tokens object"
+        )
+    return AccountTokens(
+        access_token=str(provider_tokens.get("access_token") or ""),
+        refresh_token=str(provider_tokens.get("refresh_token") or ""),
+        account_id=str(provider_tokens.get("account_id") or account.external_id),
+    )
 
 
 def usage_url() -> str:
@@ -209,7 +244,10 @@ def usage_url() -> str:
     if override:
         return override
 
-    base_url = os.getenv("PUNKRECORDS_OPENAI_CODEX_BASE_URL", DEFAULT_CODEX_BASE_URL).strip() or DEFAULT_CODEX_BASE_URL
+    base_url = (
+        os.getenv("PUNKRECORDS_OPENAI_CODEX_BASE_URL", DEFAULT_CODEX_BASE_URL).strip()
+        or DEFAULT_CODEX_BASE_URL
+    )
     if base_url.endswith("/codex"):
         return base_url[: -len("/codex")] + "/wham/usage"
     return base_url.rstrip("/") + "/wham/usage"
@@ -220,14 +258,24 @@ def _coerce_window(payload: dict[str, Any] | None) -> UsageWindow:
         return UsageWindow()
     used_percent = payload.get("used_percent")
     return UsageWindow(
-        used_percent=float(used_percent) if isinstance(used_percent, (int, float)) else None,
-        limit_window_seconds=int(payload["limit_window_seconds"]) if isinstance(payload.get("limit_window_seconds"), (int, float)) else None,
-        reset_after_seconds=int(payload["reset_after_seconds"]) if isinstance(payload.get("reset_after_seconds"), (int, float)) else None,
-        reset_at=int(payload["reset_at"]) if isinstance(payload.get("reset_at"), (int, float)) else None,
+        used_percent=float(used_percent)
+        if isinstance(used_percent, (int, float))
+        else None,
+        limit_window_seconds=int(payload["limit_window_seconds"])
+        if isinstance(payload.get("limit_window_seconds"), (int, float))
+        else None,
+        reset_after_seconds=int(payload["reset_after_seconds"])
+        if isinstance(payload.get("reset_after_seconds"), (int, float))
+        else None,
+        reset_at=int(payload["reset_at"])
+        if isinstance(payload.get("reset_at"), (int, float))
+        else None,
     )
 
 
-def access_token_expiring(access_token: str, skew_seconds: int = REFRESH_SKEW_SECONDS) -> bool:
+def access_token_expiring(
+    access_token: str, skew_seconds: int = REFRESH_SKEW_SECONDS
+) -> bool:
     claims = decode_access_token_claims(access_token)
     exp = claims.get("exp")
     if not isinstance(exp, (int, float)):
@@ -264,22 +312,36 @@ def proxy_extract_usage(payload: dict[str, Any], local_path: str) -> UsageSummar
 
     if local_path == "/v1/embeddings":
         return {
-            "input_tokens": int(usage["prompt_tokens"]) if isinstance(usage.get("prompt_tokens"), int) else None,
+            "input_tokens": int(usage["prompt_tokens"])
+            if isinstance(usage.get("prompt_tokens"), int)
+            else None,
             "output_tokens": 0,
-            "total_tokens": int(usage["total_tokens"]) if isinstance(usage.get("total_tokens"), int) else None,
+            "total_tokens": int(usage["total_tokens"])
+            if isinstance(usage.get("total_tokens"), int)
+            else None,
         }
 
     if isinstance(usage.get("input_tokens"), int):
         return {
             "input_tokens": usage["input_tokens"],
-            "output_tokens": int(usage["output_tokens"]) if isinstance(usage.get("output_tokens"), int) else None,
-            "total_tokens": int(usage["total_tokens"]) if isinstance(usage.get("total_tokens"), int) else None,
+            "output_tokens": int(usage["output_tokens"])
+            if isinstance(usage.get("output_tokens"), int)
+            else None,
+            "total_tokens": int(usage["total_tokens"])
+            if isinstance(usage.get("total_tokens"), int)
+            else None,
         }
 
     return {
-        "input_tokens": int(usage["prompt_tokens"]) if isinstance(usage.get("prompt_tokens"), int) else None,
-        "output_tokens": int(usage["completion_tokens"]) if isinstance(usage.get("completion_tokens"), int) else None,
-        "total_tokens": int(usage["total_tokens"]) if isinstance(usage.get("total_tokens"), int) else None,
+        "input_tokens": int(usage["prompt_tokens"])
+        if isinstance(usage.get("prompt_tokens"), int)
+        else None,
+        "output_tokens": int(usage["completion_tokens"])
+        if isinstance(usage.get("completion_tokens"), int)
+        else None,
+        "total_tokens": int(usage["total_tokens"])
+        if isinstance(usage.get("total_tokens"), int)
+        else None,
     }
 
 
@@ -304,7 +366,9 @@ def _format_reset(window: dict[str, Any]) -> str:
     return "reset unknown"
 
 
-def _window_summary(usages: list[AccountUsage], key: str) -> dict[str, int | float | None]:
+def _window_summary(
+    usages: list[AccountUsage], key: str
+) -> dict[str, int | float | None]:
     reported = 0
     used_percent_total = 0.0
     reset_after_seconds_min: int | None = None
@@ -321,7 +385,11 @@ def _window_summary(usages: list[AccountUsage], key: str) -> dict[str, int | flo
         reset_after_seconds = window.get("reset_after_seconds")
         if isinstance(reset_after_seconds, (int, float)):
             value = int(reset_after_seconds)
-            reset_after_seconds_min = value if reset_after_seconds_min is None else min(reset_after_seconds_min, value)
+            reset_after_seconds_min = (
+                value
+                if reset_after_seconds_min is None
+                else min(reset_after_seconds_min, value)
+            )
         reset_at = window.get("reset_at")
         if isinstance(reset_at, (int, float)):
             value = int(reset_at)
@@ -340,16 +408,30 @@ def _build_codex_usage_rows(usages: list[AccountUsage]) -> list[list[str]]:
     rows: list[list[str]] = []
     for usage in usages:
         if usage.error:
-            rows.append([usage.display_name, usage.provider or "unknown", "unknown", "error", str(usage.error), "error", str(usage.error)])
+            rows.append(
+                [
+                    usage.display_name,
+                    usage.provider or "unknown",
+                    "unknown",
+                    "error",
+                    str(usage.error),
+                    "error",
+                    str(usage.error),
+                ]
+            )
             continue
         rows.append(
             [
                 usage.display_name,
                 usage.provider or "unknown",
                 usage.plan_type or "unknown",
-                f"{usage.primary_window.used_percent}%" if usage.primary_window.used_percent is not None else "unknown",
+                f"{usage.primary_window.used_percent}%"
+                if usage.primary_window.used_percent is not None
+                else "unknown",
                 _format_reset(usage.primary_window.to_dict()),
-                f"{usage.secondary_window.used_percent}%" if usage.secondary_window.used_percent is not None else "unknown",
+                f"{usage.secondary_window.used_percent}%"
+                if usage.secondary_window.used_percent is not None
+                else "unknown",
                 _format_reset(usage.secondary_window.to_dict()),
             ]
         )
@@ -403,19 +485,38 @@ def _table_separator(widths: list[int]) -> str:
 
 
 def _table_row(values: list[str], widths: list[int]) -> str:
-    padded = [f" {value.ljust(width)} " for value, width in zip(values, widths, strict=True)]
+    padded = [
+        f" {value.ljust(width)} " for value, width in zip(values, widths, strict=True)
+    ]
     return "|" + "|".join(padded) + "|"
 
 
-def build_codex_usage_table(usages: list[AccountUsage], *, columns: list[str] | None = None, rows: list[list[str]] | None = None) -> list[str]:
-    headers = columns or ["Credential", "Provider", "Plan", "5h", "5h reset", "Week", "Week reset"]
+def build_codex_usage_table(
+    usages: list[AccountUsage],
+    *,
+    columns: list[str] | None = None,
+    rows: list[list[str]] | None = None,
+) -> list[str]:
+    headers = columns or [
+        "Credential",
+        "Provider",
+        "Plan",
+        "5h",
+        "5h reset",
+        "Week",
+        "Week reset",
+    ]
     if rows is None:
         rows = _build_codex_usage_rows(usages)
     widths = [len(header) for header in headers]
     for row in rows:
         for index, value in enumerate(row):
             widths[index] = max(widths[index], len(value))
-    lines = [_table_separator(widths), _table_row(headers, widths), _table_separator(widths)]
+    lines = [
+        _table_separator(widths),
+        _table_row(headers, widths),
+        _table_separator(widths),
+    ]
     lines.extend(_table_row(row, widths) for row in rows)
     lines.append(_table_separator(widths))
     return lines
@@ -434,7 +535,11 @@ class OpenAICodexStreamUsageTracker:
     def __init__(self, local_path: str) -> None:
         self.local_path = local_path
         self.buffer = ""
-        self.usage: UsageSummary = {"input_tokens": None, "output_tokens": None, "total_tokens": None}
+        self.usage: UsageSummary = {
+            "input_tokens": None,
+            "output_tokens": None,
+            "total_tokens": None,
+        }
 
     def feed(self, chunk: bytes) -> None:
         self.buffer += chunk.decode(errors="replace")
@@ -473,9 +578,24 @@ def codex_models_payload() -> dict[str, Any]:
     return {
         "object": "list",
         "data": [
-            {"id": "gpt-5.4", "object": "model", "created": 1743091200, "owned_by": "openai"},
-            {"id": "gpt-5.4-mini", "object": "model", "created": 1743091200, "owned_by": "openai"},
-            {"id": "text-embedding-3-small", "object": "model", "created": 1743091200, "owned_by": "openai"},
+            {
+                "id": "gpt-5.4",
+                "object": "model",
+                "created": 1743091200,
+                "owned_by": "openai",
+            },
+            {
+                "id": "gpt-5.4-mini",
+                "object": "model",
+                "created": 1743091200,
+                "owned_by": "openai",
+            },
+            {
+                "id": "text-embedding-3-small",
+                "object": "model",
+                "created": 1743091200,
+                "owned_by": "openai",
+            },
         ],
     }
 
@@ -488,31 +608,47 @@ def responses_api_to_chat_completions(payload: dict[str, Any]) -> dict[str, Any]
         item_type = item.get("type") if isinstance(item, dict) else None
         if item_type == "message":
             for part in item.get("content", []):
-                if isinstance(part, dict) and part.get("type") in ("output_text", "text"):
+                if isinstance(part, dict) and part.get("type") in (
+                    "output_text",
+                    "text",
+                ):
                     message_content += part.get("text", "")
         elif item_type == "function_call":
             if tool_calls is None:
                 tool_calls = []
-            tool_calls.append({
-                "id": item.get("call_id", item.get("id", "")),
-                "type": "function",
-                "function": {"name": item.get("name", ""), "arguments": item.get("arguments", "")},
-            })
+            tool_calls.append(
+                {
+                    "id": item.get("call_id", item.get("id", "")),
+                    "type": "function",
+                    "function": {
+                        "name": item.get("name", ""),
+                        "arguments": item.get("arguments", ""),
+                    },
+                }
+            )
     usage = payload.get("usage", {})
     return {
         "id": payload.get("id", "chatcmpl-responses-proxy"),
         "object": "chat.completion",
         "created": payload.get("created_at", 0),
         "model": payload.get("model", ""),
-        "choices": [{
-            "index": 0,
-            "message": {"role": "assistant", "content": message_content or None, "tool_calls": tool_calls},
-            "finish_reason": "tool_calls" if tool_calls else "stop",
-        }],
+        "choices": [
+            {
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": message_content or None,
+                    "tool_calls": tool_calls,
+                },
+                "finish_reason": "tool_calls" if tool_calls else "stop",
+            }
+        ],
         "usage": {
             "prompt_tokens": usage.get("input_tokens", 0),
             "completion_tokens": usage.get("output_tokens", 0),
-            "total_tokens": (usage.get("input_tokens", 0) + usage.get("output_tokens", 0)),
+            "total_tokens": (
+                usage.get("input_tokens", 0) + usage.get("output_tokens", 0)
+            ),
         },
     }
 
@@ -532,10 +668,12 @@ def chat_completions_to_responses_api(payload: dict[str, Any]) -> dict[str, Any]
             continue
 
         if role in ("user", "assistant", "developer"):
-            input_messages.append({
-                "role": role,
-                "content": content if isinstance(content, str) else "",
-            })
+            input_messages.append(
+                {
+                    "role": role,
+                    "content": content if isinstance(content, str) else "",
+                }
+            )
 
     result: dict[str, Any] = {
         "model": payload.get("model", ""),
@@ -601,18 +739,47 @@ class OpenAICodexProvider:
     label: str = "OpenAI Codex"
 
     def login_via_browser_flow(self, *, label: str | None = None) -> LoginResult:
-        issuer = os.getenv("PUNKRECORDS_OPENAI_CODEX_OAUTH_ISSUER", DEFAULT_ISSUER).strip().rstrip("/")
-        token_url = os.getenv("PUNKRECORDS_OPENAI_CODEX_OAUTH_TOKEN_URL", CODEX_OAUTH_TOKEN_URL).strip() or CODEX_OAUTH_TOKEN_URL
-        client_id = os.getenv("PUNKRECORDS_OPENAI_CODEX_OAUTH_CLIENT_ID", CODEX_OAUTH_CLIENT_ID).strip() or CODEX_OAUTH_CLIENT_ID
-        callback_host = os.getenv("PUNKRECORDS_OPENAI_CODEX_OAUTH_CALLBACK_HOST", DEFAULT_CALLBACK_HOST).strip() or DEFAULT_CALLBACK_HOST
-        callback_port = int(os.getenv("PUNKRECORDS_OPENAI_CODEX_OAUTH_CALLBACK_PORT", str(DEFAULT_CALLBACK_PORT)).strip() or str(DEFAULT_CALLBACK_PORT))
+        issuer = (
+            os.getenv("PUNKRECORDS_OPENAI_CODEX_OAUTH_ISSUER", DEFAULT_ISSUER)
+            .strip()
+            .rstrip("/")
+        )
+        token_url = (
+            os.getenv(
+                "PUNKRECORDS_OPENAI_CODEX_OAUTH_TOKEN_URL", CODEX_OAUTH_TOKEN_URL
+            ).strip()
+            or CODEX_OAUTH_TOKEN_URL
+        )
+        client_id = (
+            os.getenv(
+                "PUNKRECORDS_OPENAI_CODEX_OAUTH_CLIENT_ID", CODEX_OAUTH_CLIENT_ID
+            ).strip()
+            or CODEX_OAUTH_CLIENT_ID
+        )
+        callback_host = (
+            os.getenv(
+                "PUNKRECORDS_OPENAI_CODEX_OAUTH_CALLBACK_HOST", DEFAULT_CALLBACK_HOST
+            ).strip()
+            or DEFAULT_CALLBACK_HOST
+        )
+        callback_port = int(
+            os.getenv(
+                "PUNKRECORDS_OPENAI_CODEX_OAUTH_CALLBACK_PORT",
+                str(DEFAULT_CALLBACK_PORT),
+            ).strip()
+            or str(DEFAULT_CALLBACK_PORT)
+        )
 
         state = secrets.token_urlsafe(24)
         code_verifier, code_challenge = _generate_pkce_pair()
         originator = secrets.token_urlsafe(12)
-        callback_server = BrowserCallbackServer((callback_host, callback_port), OAuthCallbackHandler)
+        callback_server = BrowserCallbackServer(
+            (callback_host, callback_port), OAuthCallbackHandler
+        )
         callback_server.expected_state = state
-        callback_thread = threading.Thread(target=callback_server.serve_forever, daemon=True)
+        callback_thread = threading.Thread(
+            target=callback_server.serve_forever, daemon=True
+        )
         callback_thread.start()
 
         redirect_uri = f"http://localhost:{callback_port}/auth/callback"
@@ -628,22 +795,27 @@ class OpenAICodexProvider:
             "state": state,
             "originator": originator,
         }
-        workspace_id = os.getenv("PUNKRECORDS_OPENAI_CODEX_ALLOWED_WORKSPACE_ID", "").strip()
+        workspace_id = os.getenv(
+            "PUNKRECORDS_OPENAI_CODEX_ALLOWED_WORKSPACE_ID", ""
+        ).strip()
         if workspace_id:
             authorize_params["allowed_workspace_id"] = workspace_id
 
-        authorize_url = f"{issuer}/oauth/authorize?{urllib.parse.urlencode(authorize_params)}"
+        authorize_url = (
+            f"{issuer}/oauth/authorize?{urllib.parse.urlencode(authorize_params)}"
+        )
         print("OpenAI Codex sign-in")
         print()
         print("Copy and open the URL below in your browser to sign in:")
         print()
         print(f"  {authorize_url}")
         print()
-        print(f"Waiting for browser callback on {redirect_uri} ... Press Ctrl+C to cancel.")
+        print(
+            f"Waiting for browser callback on {redirect_uri} ... Press Ctrl+C to cancel."
+        )
         print()
 
         try:
-
             completed = callback_server.callback_event.wait(timeout=15 * 60)
         except KeyboardInterrupt as exc:
             raise OAuthError("Login cancelled") from exc
@@ -670,12 +842,29 @@ class OpenAICodexProvider:
             },
             timeout=15.0,
         )
-        return LoginResult(account=_build_account(tokens, label=label, source="browser-flow"), base_url=DEFAULT_CODEX_BASE_URL)
+        return LoginResult(
+            account=_build_account(tokens, label=label, source="browser-flow"),
+            base_url=DEFAULT_CODEX_BASE_URL,
+        )
 
     def start_device_login(self, *, label: str | None = None) -> DeviceLoginChallenge:
-        issuer = os.getenv("PUNKRECORDS_OPENAI_CODEX_OAUTH_ISSUER", DEFAULT_ISSUER).strip().rstrip("/")
-        token_url = os.getenv("PUNKRECORDS_OPENAI_CODEX_OAUTH_TOKEN_URL", CODEX_OAUTH_TOKEN_URL).strip() or CODEX_OAUTH_TOKEN_URL
-        client_id = os.getenv("PUNKRECORDS_OPENAI_CODEX_OAUTH_CLIENT_ID", CODEX_OAUTH_CLIENT_ID).strip() or CODEX_OAUTH_CLIENT_ID
+        issuer = (
+            os.getenv("PUNKRECORDS_OPENAI_CODEX_OAUTH_ISSUER", DEFAULT_ISSUER)
+            .strip()
+            .rstrip("/")
+        )
+        token_url = (
+            os.getenv(
+                "PUNKRECORDS_OPENAI_CODEX_OAUTH_TOKEN_URL", CODEX_OAUTH_TOKEN_URL
+            ).strip()
+            or CODEX_OAUTH_TOKEN_URL
+        )
+        client_id = (
+            os.getenv(
+                "PUNKRECORDS_OPENAI_CODEX_OAUTH_CLIENT_ID", CODEX_OAUTH_CLIENT_ID
+            ).strip()
+            or CODEX_OAUTH_CLIENT_ID
+        )
 
         device_data = _json_post(
             f"{issuer}/api/accounts/deviceauth/usercode",
@@ -704,7 +893,10 @@ class OpenAICodexProvider:
         try:
             code_response = _json_post(
                 f"{challenge.issuer}/api/accounts/deviceauth/token",
-                {"device_auth_id": challenge.device_auth_id, "user_code": challenge.user_code},
+                {
+                    "device_auth_id": challenge.device_auth_id,
+                    "user_code": challenge.user_code,
+                },
                 timeout=15.0,
             )
         except OAuthError as exc:
@@ -730,26 +922,60 @@ class OpenAICodexProvider:
             },
             timeout=15.0,
         )
-        return LoginResult(account=_build_account(tokens, label=challenge.label, source="device-flow"), base_url=DEFAULT_CODEX_BASE_URL)
+        return LoginResult(
+            account=_build_account(tokens, label=challenge.label, source="device-flow"),
+            base_url=DEFAULT_CODEX_BASE_URL,
+        )
 
-    def start_browser_login(self, *, label: str | None = None, redirect_uri: str | None = None) -> BrowserLoginChallenge:
-        issuer = os.getenv("PUNKRECORDS_OPENAI_CODEX_OAUTH_ISSUER", DEFAULT_ISSUER).strip().rstrip("/")
-        token_url = os.getenv("PUNKRECORDS_OPENAI_CODEX_OAUTH_TOKEN_URL", CODEX_OAUTH_TOKEN_URL).strip() or CODEX_OAUTH_TOKEN_URL
-        client_id = os.getenv("PUNKRECORDS_OPENAI_CODEX_OAUTH_CLIENT_ID", CODEX_OAUTH_CLIENT_ID).strip() or CODEX_OAUTH_CLIENT_ID
-        callback_host = os.getenv("PUNKRECORDS_OPENAI_CODEX_OAUTH_CALLBACK_HOST", DEFAULT_CALLBACK_HOST).strip() or DEFAULT_CALLBACK_HOST
-        callback_port = int(os.getenv("PUNKRECORDS_OPENAI_CODEX_OAUTH_CALLBACK_PORT", str(DEFAULT_CALLBACK_PORT)).strip() or str(DEFAULT_CALLBACK_PORT))
+    def start_browser_login(
+        self, *, label: str | None = None, redirect_uri: str | None = None
+    ) -> BrowserLoginChallenge:
+        issuer = (
+            os.getenv("PUNKRECORDS_OPENAI_CODEX_OAUTH_ISSUER", DEFAULT_ISSUER)
+            .strip()
+            .rstrip("/")
+        )
+        token_url = (
+            os.getenv(
+                "PUNKRECORDS_OPENAI_CODEX_OAUTH_TOKEN_URL", CODEX_OAUTH_TOKEN_URL
+            ).strip()
+            or CODEX_OAUTH_TOKEN_URL
+        )
+        client_id = (
+            os.getenv(
+                "PUNKRECORDS_OPENAI_CODEX_OAUTH_CLIENT_ID", CODEX_OAUTH_CLIENT_ID
+            ).strip()
+            or CODEX_OAUTH_CLIENT_ID
+        )
+        callback_host = (
+            os.getenv(
+                "PUNKRECORDS_OPENAI_CODEX_OAUTH_CALLBACK_HOST", DEFAULT_CALLBACK_HOST
+            ).strip()
+            or DEFAULT_CALLBACK_HOST
+        )
+        callback_port = int(
+            os.getenv(
+                "PUNKRECORDS_OPENAI_CODEX_OAUTH_CALLBACK_PORT",
+                str(DEFAULT_CALLBACK_PORT),
+            ).strip()
+            or str(DEFAULT_CALLBACK_PORT)
+        )
 
         state = secrets.token_urlsafe(24)
         code_verifier, code_challenge = _generate_pkce_pair()
         originator = secrets.token_urlsafe(12)
-        
-        callback_server = BrowserCallbackServer((callback_host, callback_port), OAuthCallbackHandler)
+
+        callback_server = BrowserCallbackServer(
+            (callback_host, callback_port), OAuthCallbackHandler
+        )
         callback_server.expected_state = state
-        callback_thread = threading.Thread(target=callback_server.serve_forever, daemon=True)
+        callback_thread = threading.Thread(
+            target=callback_server.serve_forever, daemon=True
+        )
         callback_thread.start()
-        
+
         callback_uri = f"http://localhost:{callback_port}/auth/callback"
-        
+
         authorize_params = {
             "response_type": "code",
             "client_id": client_id,
@@ -762,11 +988,15 @@ class OpenAICodexProvider:
             "state": state,
             "originator": originator,
         }
-        workspace_id = os.getenv("PUNKRECORDS_OPENAI_CODEX_ALLOWED_WORKSPACE_ID", "").strip()
+        workspace_id = os.getenv(
+            "PUNKRECORDS_OPENAI_CODEX_ALLOWED_WORKSPACE_ID", ""
+        ).strip()
         if workspace_id:
             authorize_params["allowed_workspace_id"] = workspace_id
 
-        authorize_url = f"{issuer}/oauth/authorize?{urllib.parse.urlencode(authorize_params)}"
+        authorize_url = (
+            f"{issuer}/oauth/authorize?{urllib.parse.urlencode(authorize_params)}"
+        )
 
         _PENDING_BROWSER_LOGINS[state] = callback_server
 
@@ -802,7 +1032,9 @@ class OpenAICodexProvider:
             raise OAuthError("Browser callback did not provide an authorization code")
         return authorization_code
 
-    def complete_browser_login(self, challenge: BrowserLoginChallenge, authorization_code: str) -> LoginResult:
+    def complete_browser_login(
+        self, challenge: BrowserLoginChallenge, authorization_code: str
+    ) -> LoginResult:
         tokens = _form_post(
             challenge.token_url,
             {
@@ -814,9 +1046,16 @@ class OpenAICodexProvider:
             },
             timeout=15.0,
         )
-        return LoginResult(account=_build_account(tokens, label=challenge.label, source="browser-flow"), base_url=DEFAULT_CODEX_BASE_URL)
+        return LoginResult(
+            account=_build_account(
+                tokens, label=challenge.label, source="browser-flow"
+            ),
+            base_url=DEFAULT_CODEX_BASE_URL,
+        )
 
-    def login_via_device_flow(self, *, label: str | None = None, headless: bool = False) -> LoginResult:
+    def login_via_device_flow(
+        self, *, label: str | None = None, headless: bool = False
+    ) -> LoginResult:
         del headless
         challenge = self.start_device_login(label=label)
         print("OpenAI Codex sign-in")
@@ -842,7 +1081,9 @@ class OpenAICodexProvider:
             raise OAuthError("Login timed out after 15 minutes")
         return result
 
-    def refresh_tokens(self, tokens: AccountTokens, timeout_seconds: float = 20.0) -> AccountTokens:
+    def refresh_tokens(
+        self, tokens: AccountTokens, timeout_seconds: float = 20.0
+    ) -> AccountTokens:
         payload = _form_post(
             CODEX_OAUTH_TOKEN_URL,
             {
@@ -853,10 +1094,14 @@ class OpenAICodexProvider:
             timeout=max(5.0, timeout_seconds),
         )
         access_token = str(payload.get("access_token") or "").strip()
-        refresh_token = str(payload.get("refresh_token") or tokens.refresh_token).strip()
+        refresh_token = str(
+            payload.get("refresh_token") or tokens.refresh_token
+        ).strip()
         if not access_token:
             raise OAuthError("Token refresh response did not include access_token")
-        account_id, _ = _extract_profile({"access_token": access_token, "account_id": tokens.account_id})
+        account_id, _ = _extract_profile(
+            {"access_token": access_token, "account_id": tokens.account_id}
+        )
         return AccountTokens(
             access_token=access_token,
             refresh_token=refresh_token,
@@ -868,12 +1113,20 @@ class OpenAICodexProvider:
         if not access_token_expiring(current_tokens.access_token):
             return account
         refreshed = self.refresh_tokens(current_tokens)
-        account.provider_state = {**account.provider_state, "tokens": refreshed.to_dict(), "auth_mode": account.auth_mode}
-        account.account_id = refreshed.account_id or account.account_id
-        account.last_refresh = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        account.provider_state = {
+            **account.provider_state,
+            "tokens": refreshed.to_dict(),
+            "auth_kind": account.auth_kind,
+        }
+        account.external_id = refreshed.account_id or account.external_id
+        account.last_refresh = (
+            datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        )
         return account
 
-    def fetch_account_usage(self, account: AccountRecord, timeout: float = 15.0) -> tuple[AccountRecord, AccountUsage]:
+    def fetch_account_usage(
+        self, account: AccountRecord, timeout: float = 15.0
+    ) -> tuple[AccountRecord, AccountUsage]:
         refreshed_account = account
         try:
             refreshed_account = self.maybe_refresh_account(account)
@@ -883,7 +1136,8 @@ class OpenAICodexProvider:
                 headers={
                     **DEFAULT_HEADERS,
                     "Authorization": f"Bearer {refreshed_tokens.access_token}",
-                    "ChatGPT-Account-Id": refreshed_tokens.account_id or refreshed_account.account_id,
+                    "ChatGPT-Account-Id": refreshed_tokens.account_id
+                    or refreshed_account.external_id,
                     "OpenAI-Beta": "responses=v1",
                     "OpenAI-Originator": "codex",
                 },
@@ -894,16 +1148,16 @@ class OpenAICodexProvider:
         except urllib.error.HTTPError as exc:
             body = exc.read().decode(errors="replace")
             return refreshed_account, AccountUsage(
-                account_id=refreshed_account.account_id,
-                label=refreshed_account.label,
+                external_id=refreshed_account.external_id,
+                display_name=refreshed_account.display_name,
                 provider=refreshed_account.provider,
                 plan_type=None,
                 error=f"HTTP {exc.code}: {body or exc.reason}",
             )
         except (urllib.error.URLError, OAuthError, json.JSONDecodeError) as exc:
             return refreshed_account, AccountUsage(
-                account_id=refreshed_account.account_id,
-                label=refreshed_account.label,
+                external_id=refreshed_account.external_id,
+                display_name=refreshed_account.display_name,
                 provider=refreshed_account.provider,
                 plan_type=None,
                 error=str(exc),
@@ -911,12 +1165,22 @@ class OpenAICodexProvider:
 
         rate_limit = payload.get("rate_limit") if isinstance(payload, dict) else {}
         usage = AccountUsage(
-            account_id=refreshed_account.account_id,
-            label=refreshed_account.label,
+            external_id=refreshed_account.external_id,
+            display_name=refreshed_account.display_name,
             provider=refreshed_account.provider,
-            plan_type=str(payload.get("plan_type")) if isinstance(payload, dict) and payload.get("plan_type") is not None else None,
-            primary_window=_coerce_window(rate_limit.get("primary_window") if isinstance(rate_limit, dict) else None),
-            secondary_window=_coerce_window(rate_limit.get("secondary_window") if isinstance(rate_limit, dict) else None),
+            plan_type=str(payload.get("plan_type"))
+            if isinstance(payload, dict) and payload.get("plan_type") is not None
+            else None,
+            primary_window=_coerce_window(
+                rate_limit.get("primary_window")
+                if isinstance(rate_limit, dict)
+                else None
+            ),
+            secondary_window=_coerce_window(
+                rate_limit.get("secondary_window")
+                if isinstance(rate_limit, dict)
+                else None
+            ),
         )
         return refreshed_account, usage
 
@@ -933,9 +1197,13 @@ class OpenAICodexProvider:
         return tuple(ROUTE_MAP.keys())
 
     def local_routes(self) -> tuple[LocalRouteSpec, ...]:
-        return tuple(LocalRouteSpec(path=path, method="POST") for path in ROUTE_MAP.keys())
+        return tuple(
+            LocalRouteSpec(path=path, method="POST") for path in ROUTE_MAP
+        )
 
-    def parse_local_request(self, *, local_path: str, method: str, raw_body: bytes, headers: dict[str, str]) -> dict[str, Any]:
+    def parse_local_request(
+        self, *, local_path: str, method: str, raw_body: bytes, headers: dict[str, str]
+    ) -> dict[str, Any]:
         del headers
         if method.upper() != "POST" or local_path not in ROUTE_MAP:
             raise ValueError("unsupported route")
@@ -957,34 +1225,53 @@ class OpenAICodexProvider:
     def proxy_upstream_url(self, local_path: str) -> str:
         return proxy_upstream_url(local_path)
 
-    def build_proxy_request(self, account: AccountRecord, *, local_path: str, payload: dict[str, Any], idempotency_key: str) -> ProxyRequestSpec:
-        upstream_payload = chat_completions_to_responses_api(payload) if local_path == "/v1/chat/completions" else payload
+    def build_proxy_request(
+        self,
+        account: AccountRecord,
+        *,
+        local_path: str,
+        payload: dict[str, Any],
+        idempotency_key: str,
+    ) -> ProxyRequestSpec:
+        upstream_payload = (
+            chat_completions_to_responses_api(payload)
+            if local_path == "/v1/chat/completions"
+            else payload
+        )
         data = json.dumps(upstream_payload).encode()
         stream = self.is_streaming_request(payload)
         return ProxyRequestSpec(
             url=self.proxy_upstream_url(local_path),
             data=data,
-            headers=self.proxy_headers(account, stream=stream, idempotency_key=idempotency_key),
+            headers=self.proxy_headers(
+                account, stream=stream, idempotency_key=idempotency_key
+            ),
             method="POST",
         )
 
-    def proxy_headers(self, account: AccountRecord, *, stream: bool, idempotency_key: str) -> dict[str, str]:
+    def proxy_headers(
+        self, account: AccountRecord, *, stream: bool, idempotency_key: str
+    ) -> dict[str, str]:
         tokens = _provider_tokens(account)
         return {
             **DEFAULT_HEADERS,
             "Content-Type": "application/json",
             "Authorization": f"Bearer {tokens.access_token}",
-            "ChatGPT-Account-Id": tokens.account_id or account.account_id,
+            "ChatGPT-Account-Id": tokens.account_id or account.external_id,
             "OpenAI-Beta": "responses=v1",
             "OpenAI-Originator": "codex",
             "Idempotency-Key": idempotency_key,
             "Accept": "text/event-stream" if stream else "application/json",
         }
 
-    def proxy_extract_usage(self, payload: dict[str, Any], local_path: str) -> UsageSummary:
+    def proxy_extract_usage(
+        self, payload: dict[str, Any], local_path: str
+    ) -> UsageSummary:
         return proxy_extract_usage(payload, local_path)
 
-    def proxy_extract_usage_from_body(self, body: bytes, local_path: str) -> UsageSummary:
+    def proxy_extract_usage_from_body(
+        self, body: bytes, local_path: str
+    ) -> UsageSummary:
         return proxy_extract_usage(json.loads(body.decode()), local_path)
 
     def create_stream_usage_tracker(self, local_path: str) -> StreamUsageTracker:
@@ -996,12 +1283,19 @@ class OpenAICodexProvider:
     def classify_proxy_failure(self, status_code: int, body: bytes) -> tuple[bool, int]:
         return classify_codex_status(status_code, body)
 
-    def classify_routing_failure(self, status_code: int, body: bytes) -> ProviderRoutingDecision:
+    def classify_routing_failure(
+        self, status_code: int, body: bytes
+    ) -> ProviderRoutingDecision:
         retryable, _ = self.classify_proxy_failure(status_code, body)
         if retryable:
             return ProviderRoutingDecision(True, "retryable_provider_failure")
         error_code = _body_error_code(body)
-        if error_code in {"no_eligible_accounts", "all_accounts_failed", "upstream_connection_error", "account_refresh_failed"}:
+        if error_code in {
+            "no_eligible_accounts",
+            "all_accounts_failed",
+            "upstream_connection_error",
+            "account_refresh_failed",
+        }:
             return ProviderRoutingDecision(True, error_code)
         return ProviderRoutingDecision(False, error_code or "fatal_or_invalid_request")
 
@@ -1015,6 +1309,7 @@ class OpenAICodexProvider:
 
     def describe_local_routes(self, *, base_url: str) -> list[tuple[str, str]]:
         return describe_codex_routes(base_url)
+
 
 _OPENAI_CODEX_PROVIDER = OpenAICodexProvider()
 PROVIDER = ProviderDescriptor(
