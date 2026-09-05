@@ -419,7 +419,7 @@ def test_platform_stack_smoke_and_shell_contract(monkeypatch, tmp_path):
         )
         assert 'tag = "v0.6.22"' in pyproject
         assert 'tag = "v0.5.4"' in pyproject
-        assert 'tag = "v0.6.4"' in pyproject
+        assert 'tag = "v0.6.5"' in pyproject
         assert "my-usermanager[fastapi-htmx,myauth]" in pyproject
         assert "my-usermanager[fastapi,myauth]" not in pyproject
         assert '"app-factory[platform]"' in pyproject

@@ -43,7 +43,7 @@ BOM pins follow [app-factory `COMPAT.md`](https://github.com/mikolaj92/app-facto
 |---------|-----|
 | app-factory | `v0.6.22` |
 | my-auth | `v0.5.4` |
-| my-usermanager | `v0.6.4` |
+| my-usermanager | `v0.6.5` |
 
 `my-auth` / `my-usermanager` are pinned for COMPAT alignment; passkey login and account/admin user routes are not wired in this host yet (admin access remains `PUNKRECORDS_ADMIN_TOKEN`). Chart.js is loaded through `app_factory.cdn` as an optional product extra.
 

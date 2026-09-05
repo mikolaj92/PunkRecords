@@ -32,10 +32,10 @@ punkrecords = "punkrecords.cli:main"
 
 [tool.uv.sources]
 # Platform BOM from app-factory COMPAT.md (latest row):
-# app-factory v0.6.22 + my-auth v0.5.4 + my-usermanager v0.6.4
+# app-factory v0.6.22 + my-auth v0.5.4 + my-usermanager v0.6.5
 app-factory = { git = "https://github.com/mikolaj92/app-factory", tag = "v0.6.22" }
 my-auth = { git = "https://github.com/mikolaj92/my-auth", tag = "v0.5.4" }
-my-usermanager = { git = "https://github.com/mikolaj92/my-usermanager", tag = "v0.6.4" }
+my-usermanager = { git = "https://github.com/mikolaj92/my-usermanager", tag = "v0.6.5" }
 
 [tool.uv]
 # Nested adapter uv.sources may declare an older app-factory. Override app-factory only.

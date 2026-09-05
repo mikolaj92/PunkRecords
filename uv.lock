@@ -416,8 +416,8 @@ fastapi-htmx = [
 
 [[package]]
 name = "my-usermanager"
-version = "0.6.4"
-source = { git = "https://github.com/mikolaj92/my-usermanager?tag=v0.6.4#e47b14027dc3da5c9234d6e4800eb67ce1c16ca1" }
+version = "0.6.5"
+source = { git = "https://github.com/mikolaj92/my-usermanager?tag=v0.6.5#bad07b230540269276828600aacbb09c45f4c9d8" }
 
 [package.optional-dependencies]
 fastapi-htmx = [
@@ -473,7 +473,7 @@ requires-dist = [
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27" },
     { name = "jinja2", specifier = "==3.1.6" },
     { name = "my-auth", extras = ["fastapi-htmx"], git = "https://github.com/mikolaj92/my-auth?tag=v0.5.4" },
-    { name = "my-usermanager", extras = ["fastapi-htmx", "myauth"], git = "https://github.com/mikolaj92/my-usermanager?tag=v0.6.4" },
+    { name = "my-usermanager", extras = ["fastapi-htmx", "myauth"], git = "https://github.com/mikolaj92/my-usermanager?tag=v0.6.5" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
     { name = "uvicorn", specifier = "==0.42.0" },
 ]
