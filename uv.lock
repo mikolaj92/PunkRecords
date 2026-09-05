@@ -1,9 +1,9 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.12"
 
 [manifest]
-overrides = [{ name = "app-factory", extras = ["platform"], git = "https://github.com/mikolaj92/app-factory?tag=v0.6.16" }]
+overrides = [{ name = "app-factory", extras = ["platform"], git = "https://github.com/mikolaj92/app-factory?tag=v0.6.22" }]
 
 [[package]]
 name = "annotated-doc"
@@ -38,8 +38,8 @@ wheels = [
 
 [[package]]
 name = "app-factory"
-version = "0.6.16"
-source = { git = "https://github.com/mikolaj92/app-factory?tag=v0.6.16#65c7d82fc1d3bac8e238d89fc1f0096476ef9d5c" }
+version = "0.6.22"
+source = { git = "https://github.com/mikolaj92/app-factory?tag=v0.6.22#d433910d60de71fa45c4325640c7a6d79f127244" }
 dependencies = [
     { name = "jinja2" },
 ]
@@ -400,8 +400,8 @@ wheels = [
 
 [[package]]
 name = "my-auth"
-version = "0.4.8"
-source = { git = "https://github.com/mikolaj92/my-auth?tag=v0.4.8#945586e73cab25c46ad68c780968feee849c100b" }
+version = "0.5.4"
+source = { git = "https://github.com/mikolaj92/my-auth?tag=v0.5.4#c05018866e4c8fb166c69598fe8288197c0dd996" }
 dependencies = [
     { name = "typing-extensions" },
     { name = "webauthn" },
@@ -416,8 +416,8 @@ fastapi-htmx = [
 
 [[package]]
 name = "my-usermanager"
-version = "0.5.11"
-source = { git = "https://github.com/mikolaj92/my-usermanager?tag=v0.5.11#2c608db2a44173396a3c39e5cda0031e7e320410" }
+version = "0.6.4"
+source = { git = "https://github.com/mikolaj92/my-usermanager?tag=v0.6.4#e47b14027dc3da5c9234d6e4800eb67ce1c16ca1" }
 
 [package.optional-dependencies]
 fastapi-htmx = [
@@ -468,12 +468,12 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "app-factory", extras = ["platform"], git = "https://github.com/mikolaj92/app-factory?tag=v0.6.16" },
+    { name = "app-factory", extras = ["platform"], git = "https://github.com/mikolaj92/app-factory?tag=v0.6.22" },
     { name = "fastapi", specifier = "==0.135.2" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27" },
     { name = "jinja2", specifier = "==3.1.6" },
-    { name = "my-auth", extras = ["fastapi-htmx"], git = "https://github.com/mikolaj92/my-auth?tag=v0.4.8" },
-    { name = "my-usermanager", extras = ["fastapi-htmx", "myauth"], git = "https://github.com/mikolaj92/my-usermanager?tag=v0.5.11" },
+    { name = "my-auth", extras = ["fastapi-htmx"], git = "https://github.com/mikolaj92/my-auth?tag=v0.5.4" },
+    { name = "my-usermanager", extras = ["fastapi-htmx", "myauth"], git = "https://github.com/mikolaj92/my-usermanager?tag=v0.6.4" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
     { name = "uvicorn", specifier = "==0.42.0" },
 ]
