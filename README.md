@@ -5,14 +5,14 @@ PunkRecords is a self-contained local proxy runtime with plugin-based provider s
 This project keeps provider credentials, failover state, and proxy telemetry in its own local store and exposes a server surface for:
 
 - running a local OpenAI-compatible failover proxy for supported routes,
-- serving admin/state/settings APIs for future web UI flows,
+- serving the operator dashboard at `GET /` plus admin/state/settings JSON APIs,
 - routing requests across provider credential pools,
 
 ## Why this exists
 
 PunkRecords keeps provider logins, failover state, and proxy telemetry together under one local runtime root while exposing a single proxy surface for traffic.
 
-The old text-mode TUI has been removed. The CLI is now limited to starting the server; administration is expected to move through the proxy/admin API and future web UI.
+The old text-mode TUI has been removed. The CLI is now limited to starting the server; administration happens through the operator dashboard at `GET /` and the proxy/admin JSON API.
 
 ## Current scope
 
@@ -20,7 +20,7 @@ Version `0.1.0` ships with one built-in provider plugin:
 
 - built-in provider: `openai-codex`
 - auth type: OAuth logins, not API keys
-- server-oriented workflow with API endpoints and future web UI/admin flows
+- server-oriented workflow with the operator dashboard at `GET /` plus admin JSON APIs
 - staged OpenAI-compatible proxy support for selected routes
 
 The provider system itself is plugin-based. Built-in plugins live in the repository under the `providers/` package, and external plugins can be loaded by setting:
@@ -32,6 +32,8 @@ The provider system itself is plugin-based. Built-in plugins live in the reposit
 ```bash
 punkrecords proxy --host 0.0.0.0 --port 4141
 ```
+
+After the proxy starts, open the operator dashboard at `http://127.0.0.1:4141/` (`GET /`). JSON admin routes stay under `/_proxy/admin/`.
 
 ## Platform UI stack
 
@@ -94,7 +96,9 @@ Run:
 uv run punkrecords proxy --host 0.0.0.0 --port 4141
 ```
 
-FastAPI exposes built-in API docs and schema when the proxy is running:
+The operator dashboard is served at `GET /` (for the default bind, `http://127.0.0.1:4141/`). JSON admin routes remain under `/_proxy/admin/`.
+
+FastAPI also exposes built-in API docs and schema when the proxy is running:
 
 - `GET /openapi.json`
 - `GET /docs`
