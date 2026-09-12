@@ -78,6 +78,8 @@ def test_help_and_parser_expose_only_server_cli(capsys):
     assert "list" not in help_output
     assert "switch" not in help_output
     assert "tui" not in help_output
+    assert "future web UI" not in help_output
+    assert "GET /" in help_output or "dashboard" in help_output.lower()
 
     parser = cli_module.build_parser()
     for removed in (["tui"], ["login"], ["status"], ["list"], ["switch", "1"]):
