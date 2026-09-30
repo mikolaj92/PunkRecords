@@ -109,6 +109,118 @@ def test_model_exposes_one_canonical_account_shape():
     assert payload["provider_state"]["tokens"]["account_id"] == "acct-1"
 
 
+@pytest.mark.parametrize(
+    "identity",
+    [
+        {},
+        {"external_id": "acct-1", "display_name": "work"},
+        {"external_id": "acct-1", "display_name": ""},
+        {"external_id": "", "display_name": "work"},
+        {"external_id": "", "display_name": ""},
+    ],
+)
+def test_usage_exposes_one_canonical_shape(identity):
+    usage = AccountUsage(
+        **identity,
+        provider="openai-codex",
+        details={"plan_type": "plus"},
+    )
+    payload = usage.to_dict()
+    empty_window = {
+        "used_percent": None,
+        "limit_window_seconds": None,
+        "reset_after_seconds": None,
+        "reset_at": None,
+    }
+    assert payload == {
+        "external_id": identity.get("external_id", ""),
+        "display_name": identity.get("display_name", ""),
+        "provider": "openai-codex",
+        "details": {"plan_type": "plus"},
+        "error": None,
+        "plan_type": "plus",
+        "primary_window": empty_window,
+        "secondary_window": empty_window,
+    }
+    serialized = json.loads(json.dumps(payload))
+    assert serialized == payload
+    for key in ("account_id", "label"):
+        assert key not in serialized
+    for legacy in ("account_id", "label"):
+        assert legacy not in usage.__dict__
+        assert not hasattr(usage, legacy)
+        assert not isinstance(getattr(type(usage), legacy, None), property)
+
+    usage.external_id = "acct-2"
+    usage.display_name = "personal"
+    updated_payload = usage.to_dict()
+    assert updated_payload["external_id"] == "acct-2"
+    assert updated_payload["display_name"] == "personal"
+    assert set(updated_payload) == set(payload)
+
+
+@pytest.mark.parametrize("legacy", ["account_id", "label"])
+@pytest.mark.parametrize(
+    "canonical", [{}, {"external_id": "acct-1", "display_name": "work"}]
+)
+def test_usage_rejects_legacy_identity_arguments(legacy, canonical):
+    with pytest.raises(TypeError, match=f"unexpected keyword argument '{legacy}'"):
+        AccountUsage(**canonical, **{legacy: "legacy-value"})
+
+
+def test_usage_preserves_plan_windows_details_and_errors():
+    primary = models_module.UsageWindow(12.5, 18000, 120, 1900000000)
+    secondary = models_module.UsageWindow(67.5, 604800, 240, 1900000120)
+    details = {"provider_extra": "retained"}
+    usage = AccountUsage(
+        external_id="acct-1",
+        display_name="work",
+        provider="openai-codex",
+        details=details,
+        plan_type="plus",
+        primary_window=primary,
+        secondary_window=secondary,
+    )
+    payload = usage.to_dict()
+    assert details == {"provider_extra": "retained"}
+    assert payload["details"] == {
+        "provider_extra": "retained",
+        "plan_type": "plus",
+        "primary_window": primary.to_dict(),
+        "secondary_window": secondary.to_dict(),
+    }
+    assert usage.plan_type == payload["plan_type"] == "plus"
+    assert (
+        usage.primary_window.to_dict() == payload["primary_window"] == primary.to_dict()
+    )
+    assert (
+        usage.secondary_window.to_dict()
+        == payload["secondary_window"]
+        == secondary.to_dict()
+    )
+    assert payload["error"] is None
+    assert json.loads(json.dumps(payload)) == payload
+    assert "account_id" not in payload
+    assert "label" not in payload
+    report = openai_codex_module.build_codex_usage_report([usage])
+    assert report["rows"][0][:4] == ["work", "openai-codex", "plus", "12.5%"]
+    assert report["rows"][0][5] == "67.5%"
+
+    usage.error = "quota unavailable"
+    assert json.loads(json.dumps(usage.to_dict())) == {
+        **payload,
+        "error": "quota unavailable",
+    }
+    report = openai_codex_module.build_codex_usage_report([usage])
+    assert report["summary"]["failed_accounts"] == ["work"]
+    assert report["rows"][0][3:] == [
+        "error",
+        "quota unavailable",
+        "error",
+        "quota unavailable",
+    ]
+
+
 def test_repository_load_rejects_missing_provider(tmp_path):
     path = tmp_path / "accounts.json"
     path.write_text(
