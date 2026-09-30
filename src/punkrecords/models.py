@@ -121,14 +121,12 @@ class AccountUsage:
         provider: str = "",
         details: dict[str, Any] | None = None,
         error: str | None = None,
-        account_id: str | None = None,
-        label: str | None = None,
         plan_type: str | None = None,
         primary_window: UsageWindow | None = None,
         secondary_window: UsageWindow | None = None,
     ) -> None:
-        self.external_id = external_id or account_id or ""
-        self.display_name = display_name or label or ""
+        self.external_id = external_id
+        self.display_name = display_name
         self.provider = provider
         self.details = details.copy() if isinstance(details, dict) else {}
         if plan_type is not None:
@@ -138,22 +136,6 @@ class AccountUsage:
         if secondary_window is not None:
             self.details["secondary_window"] = secondary_window.to_dict()
         self.error = error
-
-    @property
-    def account_id(self) -> str:
-        return self.external_id
-
-    @account_id.setter
-    def account_id(self, value: str) -> None:
-        self.external_id = value
-
-    @property
-    def label(self) -> str:
-        return self.display_name
-
-    @label.setter
-    def label(self, value: str) -> None:
-        self.display_name = value
 
     @property
     def plan_type(self) -> str | None:
@@ -223,8 +205,6 @@ class AccountUsage:
         return {
             "external_id": self.external_id,
             "display_name": self.display_name,
-            "account_id": self.account_id,
-            "label": self.display_name,
             "provider": self.provider,
             "details": self.details,
             "plan_type": self.plan_type,
