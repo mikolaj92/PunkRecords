@@ -39,21 +39,21 @@ After the proxy starts, open the operator dashboard at `http://127.0.0.1:4141/` 
 
 The operator dashboard uses the shared app-factory product shell (Basecoat + HTMX + Alpine) from same-origin `/static/platform/...`. Host templates extend `app_factory/product_shell.html` and supply menu data only — no forked sidebar/header/theme chrome.
 
-Platform pins use app-factory `v0.7.9` and adapters that declare the same app-factory tag:
+BOM pins follow [app-factory `COMPAT.md`](https://github.com/mikolaj92/app-factory/blob/v0.6.22/COMPAT.md):
 
 | Package | Tag |
 |---------|-----|
-| app-factory | `v0.7.9` |
-| my-auth | `v0.5.7` |
-| my-usermanager | `v0.6.10` |
+| app-factory | `v0.6.22` |
+| my-auth | `v0.5.4` |
+| my-usermanager | `v0.6.5` |
 
-`my-auth` / `my-usermanager` are pinned for platform compatibility; passkey login and account/admin user routes are not wired in this host yet (admin access remains `PUNKRECORDS_ADMIN_TOKEN`). Chart.js is loaded through `app_factory.cdn` as an optional product extra.
+`my-auth` / `my-usermanager` are pinned for COMPAT alignment; passkey login and account/admin user routes are not wired in this host yet (admin access remains `PUNKRECORDS_ADMIN_TOKEN`). Chart.js is loaded through `app_factory.cdn` as an optional product extra.
 
 ## Development
 
 ```bash
-uv sync --locked --extra dev
-uv run --locked --extra dev pytest
+uv sync --extra dev
+uv run pytest
 ```
 
 You can also run without installing:
