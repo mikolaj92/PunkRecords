@@ -41,21 +41,21 @@ The operator dashboard uses the shared app-factory product shell (Basecoat + HTM
 
 Git sources pinned in `pyproject.toml` and resolved in `uv.lock`:
 
-| Package / repository | Tag | Locked commit |
-|----------------------|-----|---------------|
-| [app-factory](https://github.com/mikolaj92/app-factory) | `v0.7.9` | `eea39ae621eefe6a681f905a954abe016aef724b` |
-| [my-auth](https://github.com/mikolaj92/my-auth) | `v0.5.7` | `bd0775f1993299b27d2bbd785dd252821dbff06e` |
-| [my-usermanager](https://github.com/mikolaj92/my-usermanager) | `v0.6.10` | `1844d41e0caad5a458a16bc16d3dcc54444b35fc` |
+| Repository (`github.com/mikolaj92/`) | Tag | Locked commit |
+|------------------------------------|-----|---------------|
+| app-factory | `v0.7.9` | `eea39ae621eefe6a681f905a954abe016aef724b` |
+| my-auth | `v0.5.7` | `bd0775f1993299b27d2bbd785dd252821dbff06e` |
+| my-usermanager | `v0.6.10` | `1844d41e0caad5a458a16bc16d3dcc54444b35fc` |
 
 Passkey login and account/admin user routes are not wired in this host yet (admin access remains `PUNKRECORDS_ADMIN_TOKEN`). Chart.js is loaded through `app_factory.cdn` as an optional product extra.
 
 ### HTTP dependency audit
 
-The checked `uv.lock` graph uses FastAPI `0.143.2` in production. HTTPX2 is declared only in the project's `dev` extra: `punkrecords[dev] → httpx2 2.13.1 → httpcore2 2.13.1 → h11 0.16.0 / truststore 0.10.5`. These registry packages resolve from `https://pypi.org/simple`, with artifact hashes recorded in the lockfile. On Emscripten, HTTPX2 selects `httpx2-jsfetch 1.0` instead of its non-Emscripten AnyIO, HTTPCore2 and truststore dependencies.
+`uv.lock` uses FastAPI `0.143.2` in production. The dev-only chain is `punkrecords[dev] → httpx2 2.13.1 → httpcore2 2.13.1 → h11 0.16.0 / truststore 0.10.5`, from `https://pypi.org/simple` with locked artifact hashes. On Emscripten, HTTPX2 uses `httpx2-jsfetch 1.0` instead of AnyIO, HTTPCore2 and truststore.
 
-No `httpx`, `httpcore`, `requests` or `urllib3` packages occur in this lockfile. `h11` is not a legacy HTTP client; production also uses it through `uvicorn 0.54.0`. No legacy removal is needed in the checked graph. Scope: production extras `platform`, `fastapi-htmx`, `myauth` (including transitive `app-factory[fastapi]`), plus `dev`, with platform markers inspected. `standard` is not selected or recorded here; this audit does not cover unselected extras or other dependency resolutions.
+The checked graph contains no `httpx`, `httpcore`, `requests` or `urllib3`, so no legacy removal plan is needed. `h11` is not a legacy client; production also uses it through `uvicorn 0.54.0`. This covers `platform`, `fastapi-htmx`, `myauth`, transitive `app-factory[fastapi]`, and `dev`, including platform markers—not unselected extras such as `standard` or other resolutions.
 
-Validation: `uv lock --check`, `uv tree --locked --universal` (this uv version includes optional dependencies by default and rejects `--all-extras`), and `uv run --locked --extra dev pytest` (54 passed). Required PR checks could not be verified: this checkout has no `.github` directory, and the unauthenticated GitHub API returned HTTP 404.
+Validation: `uv lock --check`, `uv tree --locked --universal`, and `uv run --locked --extra dev pytest` (54 passed).
 
 ## Development
 
