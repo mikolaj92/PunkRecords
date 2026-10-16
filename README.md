@@ -61,7 +61,7 @@ uv run --locked pytest
 You can also run without installing:
 
 ```bash
-uv run punkrecords proxy --host 0.0.0.0 --port 4141
+uv run --locked punkrecords proxy --host 0.0.0.0 --port 4141
 ```
 
 ## Storage
