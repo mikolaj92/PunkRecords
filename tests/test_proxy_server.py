@@ -9,8 +9,11 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from functools import partial
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+
+import pytest
 
 models_module = importlib.import_module("punkrecords.models")
 oauth_module = importlib.import_module("punkrecords.oauth")
@@ -63,6 +66,9 @@ def _free_port() -> int:
 
 
 class FakeUpstreamHandler(BaseHTTPRequestHandler):
+    failure_mode = "status"
+    requests: list[dict] = []
+
     def log_message(self, format: str, *args: object) -> None:
         return
 
@@ -73,6 +79,23 @@ class FakeUpstreamHandler(BaseHTTPRequestHandler):
             self.end_headers()
             return
 
+        payload = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        self.requests.append(
+            {
+                "path": self.path,
+                "account_id": account_id,
+                "payload": payload,
+                "authorization": self.headers.get("Authorization"),
+                "idempotency_key": self.headers.get("Idempotency-Key"),
+            }
+        )
+        if account_id == "acct-1" and self.failure_mode == "disconnect":
+            self.close_connection = True
+            return
+        if account_id == "acct-1" and self.failure_mode == "timeout":
+            time.sleep(0.2)
+            self.close_connection = True
+            return
         if account_id == "acct-1":
             body = json.dumps({"detail": {"code": "deactivated_workspace"}}).encode()
             self.send_response(402)
@@ -293,16 +316,14 @@ def test_proxy_openapi_docs_and_dashboard(monkeypatch, tmp_path):
         assert 'id="sidebar"' in dashboard_html
         assert 'action="/logout"' not in dashboard_html
 
-        try:
+        with pytest.raises(urllib.error.HTTPError) as error:
             urllib.request.urlopen(
                 f"http://localhost:{server.server_port}/_proxy/dashboard", timeout=5
             )
-        except urllib.error.HTTPError as exc:
+        with error.value as exc:
             assert exc.code == 404
             payload = json.loads(exc.read().decode())
             assert payload["error"]["code"] == "not_found"
-        else:
-            raise AssertionError("Expected legacy dashboard route to be removed")
 
         with urllib.request.urlopen(
             f"http://localhost:{server.server_port}/_proxy/dashboard/overview",
@@ -1155,15 +1176,13 @@ def test_proxy_request_transform_fail_closed_returns_error(monkeypatch, tmp_path
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        try:
+        with pytest.raises(urllib.error.HTTPError) as error:
             urllib.request.urlopen(request, timeout=5)
-        except urllib.error.HTTPError as exc:
+        with error.value as exc:
             assert exc.code == 500
             payload = json.loads(exc.read().decode())
             assert payload["error"]["code"] == "request_transform_failed"
             assert "guard" in payload["error"]["message"]
-        else:
-            raise AssertionError("Expected transform failure response")
     finally:
         proxy.shutdown()
         proxy.server_close()
@@ -1474,9 +1493,9 @@ def test_proxy_admin_requests_and_settings(monkeypatch, tmp_path):
             headers={"Content-Type": "application/json"},
             method="PATCH",
         )
-        try:
+        with pytest.raises(urllib.error.HTTPError) as error:
             urllib.request.urlopen(invalid, timeout=5)
-        except urllib.error.HTTPError as exc:
+        with error.value as exc:
             payload = json.loads(exc.read().decode())
             assert exc.code == 400
             assert payload["error"]["code"] == "invalid_settings"
@@ -1487,9 +1506,9 @@ def test_proxy_admin_requests_and_settings(monkeypatch, tmp_path):
             headers={"Content-Type": "application/json"},
             method="PATCH",
         )
-        try:
+        with pytest.raises(urllib.error.HTTPError) as error:
             urllib.request.urlopen(invalid_key, timeout=5)
-        except urllib.error.HTTPError as exc:
+        with error.value as exc:
             payload = json.loads(exc.read().decode())
             assert exc.code == 400
             assert payload["error"]["code"] == "invalid_settings"
@@ -1509,11 +1528,11 @@ def test_proxy_admin_auth_token(monkeypatch, tmp_path):
     server = ProxyServer(("localhost", _free_port()), ProxyHandler, repo)
     _start_server(server)
     try:
-        try:
+        with pytest.raises(urllib.error.HTTPError) as error:
             urllib.request.urlopen(
                 f"http://localhost:{server.server_port}/_proxy/admin/state", timeout=5
             )
-        except urllib.error.HTTPError as exc:
+        with error.value as exc:
             payload = json.loads(exc.read().decode())
             assert exc.code == 401
             assert payload["error"]["code"] == "admin_auth_required"
@@ -1545,9 +1564,9 @@ def test_proxy_error_envelope_and_method_handling(monkeypatch, tmp_path):
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        try:
+        with pytest.raises(urllib.error.HTTPError) as error:
             urllib.request.urlopen(bad_json_request, timeout=5)
-        except urllib.error.HTTPError as exc:
+        with error.value as exc:
             payload = json.loads(exc.read().decode())
             assert exc.code == 400
             assert payload["error"]["code"] == "invalid_json"
@@ -1556,9 +1575,9 @@ def test_proxy_error_envelope_and_method_handling(monkeypatch, tmp_path):
         get_request = urllib.request.Request(
             f"http://localhost:{server.server_port}/v1/responses", method="GET"
         )
-        try:
+        with pytest.raises(urllib.error.HTTPError) as error:
             urllib.request.urlopen(get_request, timeout=5)
-        except urllib.error.HTTPError as exc:
+        with error.value as exc:
             payload = json.loads(exc.read().decode())
             assert exc.code == 405
             assert exc.headers["Allow"] == "POST"
@@ -1589,9 +1608,9 @@ def test_proxy_refresh_failure_returns_controlled_error(monkeypatch, tmp_path):
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        try:
+        with pytest.raises(urllib.error.HTTPError) as error:
             urllib.request.urlopen(request, timeout=5)
-        except urllib.error.HTTPError as exc:
+        with error.value as exc:
             payload = json.loads(exc.read().decode())
             assert exc.code == 503
             assert payload["error"]["code"] == "account_refresh_failed"
@@ -1600,12 +1619,20 @@ def test_proxy_refresh_failure_returns_controlled_error(monkeypatch, tmp_path):
         server.server_close()
 
 
-def test_proxy_failover_to_second_account(monkeypatch, tmp_path):
+@pytest.mark.parametrize("failure_mode", ["status", "disconnect", "timeout"])
+def test_proxy_failover_to_second_account(monkeypatch, tmp_path, failure_mode):
     monkeypatch.setenv("PUNKRECORDS_HOME", str(tmp_path / "manager"))
     repo = AccountRepository()
     repo.upsert_account(_account(1, "work"), make_active=True)
     repo.upsert_account(_account(2, "backup"), make_active=False)
 
+    monkeypatch.setattr(FakeUpstreamHandler, "failure_mode", failure_mode)
+    monkeypatch.setattr(FakeUpstreamHandler, "requests", [])
+    if failure_mode == "timeout":
+        monkeypatch.setattr(
+            proxy_module, "_perform_proxy_request",
+            partial(proxy_module._perform_proxy_request, timeout=0.05),
+        )
     upstream = ThreadingHTTPServer(("localhost", _free_port()), FakeUpstreamHandler)
     _start_server(upstream)
 
@@ -1631,6 +1658,23 @@ def test_proxy_failover_to_second_account(monkeypatch, tmp_path):
         with urllib.request.urlopen(request, timeout=5) as response:
             payload = json.loads(response.read().decode())
         assert payload == {"ok": True, "account_id": "acct-2"}
+        received = FakeUpstreamHandler.requests
+        assert [item["account_id"] for item in received] == ["acct-1", "acct-2"]
+        assert [item["authorization"] for item in received] == [
+            "Bearer token-1",
+            "Bearer token-2",
+        ]
+        assert all(item["path"] == "/responses" for item in received)
+        assert received[0]["payload"] == received[1]["payload"]
+        assert received[0]["payload"]["input"] == "hello"
+        assert received[0]["idempotency_key"]
+        assert received[0]["idempotency_key"] == received[1]["idempotency_key"]
+        with urllib.request.urlopen(
+            f"http://localhost:{proxy.server_port}/_proxy/stats/summary", timeout=5
+        ) as response:
+            stats = json.loads(response.read().decode())
+        assert stats["request_count"] == 1
+        assert stats["by_endpoint"] == {"/v1/responses": 1}
 
         active = repo.get_active()
         assert active is not None
