@@ -51,7 +51,7 @@ BOM pins follow [app-factory `COMPAT.md`](https://github.com/mikolaj92/app-facto
 
 ## Development
 
-Development dependencies use `httpx2`; do not install `httpx` or add compatibility aliases or fallbacks.
+Use `httpx2` without `httpx`, compatibility aliases, or fallbacks.
 
 ```bash
 uv sync --locked --extra dev
