@@ -51,9 +51,11 @@ BOM pins follow [app-factory `COMPAT.md`](https://github.com/mikolaj92/app-facto
 
 ## Development
 
+Development dependencies use `httpx2`; do not install `httpx` or add compatibility aliases or fallbacks.
+
 ```bash
-uv sync --extra dev
-uv run pytest
+uv sync --locked --extra dev
+uv run --locked pytest
 ```
 
 You can also run without installing:
