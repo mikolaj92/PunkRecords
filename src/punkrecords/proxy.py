@@ -10,6 +10,7 @@ import urllib.request
 import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass
+from http.client import HTTPException
 from pathlib import Path
 from typing import Any, BinaryIO
 
@@ -205,9 +206,10 @@ def _perform_proxy_request(
     headers = dict(response.headers.items())
     if stream:
         return response.status, response, headers
-    body = response.read()
-    response.close()
-    return response.status, body, headers
+    try:
+        return response.status, response.read(), headers
+    finally:
+        response.close()
 
 
 def _forward_request(
@@ -220,7 +222,7 @@ def _forward_request(
     )
     try:
         status_code, payload_or_response, headers = _perform_proxy_request(
-            request_spec, stream=stream, timeout=60.0
+            request_spec, stream=stream
         )
         headers = dict(headers)
         headers["X-Proxy-Account-Id"] = account.external_id
@@ -311,7 +313,7 @@ def _forward_with_failover(
                 account.provider,
             )
             continue
-        except urllib.error.URLError as exc:
+        except (urllib.error.URLError, TimeoutError, HTTPException) as exc:
             repo.mark_proxy_failure(
                 account.external_id,
                 provider_id=account.provider,
