@@ -39,7 +39,7 @@ After the proxy starts, open the operator dashboard at `http://127.0.0.1:4141/` 
 
 The operator dashboard uses the shared app-factory product shell (Basecoat + HTMX + Alpine) from same-origin `/static/platform/...`. Host templates extend `app_factory/product_shell.html` and supply menu data only — no forked sidebar/header/theme chrome.
 
-Git sources pinned in `pyproject.toml` and resolved in `uv.lock`:
+Git sources (`pyproject.toml` → `uv.lock`):
 
 | Repository (`github.com/mikolaj92/`) | Tag | Locked commit |
 |------------------------------------|-----|---------------|
@@ -51,11 +51,9 @@ Passkey login and account/admin user routes are not wired in this host yet (admi
 
 ### HTTP dependency audit
 
-`uv.lock` uses FastAPI `0.143.2` in production. The dev-only chain is `punkrecords[dev] → httpx2 2.13.1 → httpcore2 2.13.1 → h11 0.16.0 / truststore 0.10.5`, from `https://pypi.org/simple` with locked artifact hashes. On Emscripten, HTTPX2 uses `httpx2-jsfetch 1.0` instead of AnyIO, HTTPCore2 and truststore.
+`uv.lock`: production FastAPI `0.143.2`; dev chain `punkrecords[dev] → httpx2 2.13.1 → httpcore2 2.13.1 → h11 0.16.0 / truststore 0.10.5`. Sources: `https://pypi.org/simple`, with locked hashes. Emscripten uses `httpx2-jsfetch 1.0` instead of AnyIO, HTTPCore2 and truststore.
 
-The checked graph contains no `httpx`, `httpcore`, `requests` or `urllib3`, so no legacy removal plan is needed. `h11` is not a legacy client; production also uses it through `uvicorn 0.54.0`. This covers `platform`, `fastapi-htmx`, `myauth`, transitive `app-factory[fastapi]`, and `dev`, including platform markers—not unselected extras such as `standard` or other resolutions.
-
-Validation: `uv lock --check`, `uv tree --locked --universal`, and `uv run --locked --extra dev pytest` (54 passed).
+No `httpx`, `httpcore`, `requests` or `urllib3` in the checked graph; no legacy removal plan needed. Production also uses `h11` through `uvicorn 0.54.0`; it is not a legacy client. Scope: `platform`, `fastapi-htmx`, `myauth`, transitive `app-factory[fastapi]`, and `dev`, including platform markers; excludes unselected extras such as `standard` and other resolutions.
 
 ## Development
 
