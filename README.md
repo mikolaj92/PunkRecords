@@ -51,9 +51,9 @@ Passkey login and account/admin user routes are not wired in this host yet (admi
 
 ### HTTP dependency audit
 
-`uv.lock`: production FastAPI `0.143.2`; dev chain `punkrecords[dev] → httpx2 2.13.1 → httpcore2 2.13.1 → h11 0.16.0 / truststore 0.10.5`. Sources: `https://pypi.org/simple`, with locked hashes. Emscripten uses `httpx2-jsfetch 1.0` instead of AnyIO, HTTPCore2 and truststore.
+`uv.lock` pins production FastAPI `0.143.2` and `punkrecords[dev] → httpx2 2.13.1 → httpcore2 2.13.1 → h11 0.16.0`; HTTPX2 also requires `truststore 0.10.5`. Registry: `https://pypi.org/simple`, with locked hashes. On Emscripten, `httpx2-jsfetch 1.0` replaces AnyIO, HTTPCore2 and truststore.
 
-No `httpx`, `httpcore`, `requests` or `urllib3` in the checked graph; no legacy removal plan needed. Production also uses `h11` through `uvicorn 0.54.0`; it is not a legacy client. Scope: `platform`, `fastapi-htmx`, `myauth`, transitive `app-factory[fastapi]`, and `dev`, including platform markers; excludes unselected extras such as `standard` and other resolutions.
+No `httpx`, `httpcore`, `requests` or `urllib3` found in `platform`, `fastapi-htmx`, `myauth`, transitive `app-factory[fastapi]`, or `dev`, including platform markers. Unselected extras (`standard`) and other resolutions are excluded. Production `uvicorn 0.54.0 → h11` is not a legacy client.
 
 ## Development
 
