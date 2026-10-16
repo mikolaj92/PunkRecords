@@ -39,15 +39,21 @@ After the proxy starts, open the operator dashboard at `http://127.0.0.1:4141/` 
 
 The operator dashboard uses the shared app-factory product shell (Basecoat + HTMX + Alpine) from same-origin `/static/platform/...`. Host templates extend `app_factory/product_shell.html` and supply menu data only — no forked sidebar/header/theme chrome.
 
-BOM pins follow [app-factory `COMPAT.md`](https://github.com/mikolaj92/app-factory/blob/v0.6.22/COMPAT.md):
+Git sources (`pyproject.toml` → `uv.lock`):
 
-| Package | Tag |
-|---------|-----|
-| app-factory | `v0.6.22` |
-| my-auth | `v0.5.4` |
-| my-usermanager | `v0.6.5` |
+| Repository (`github.com/mikolaj92/`) | Tag | Locked commit |
+|------------------------------------|-----|---------------|
+| app-factory | `v0.7.9` | `eea39ae621eefe6a681f905a954abe016aef724b` |
+| my-auth | `v0.5.7` | `bd0775f1993299b27d2bbd785dd252821dbff06e` |
+| my-usermanager | `v0.6.10` | `1844d41e0caad5a458a16bc16d3dcc54444b35fc` |
 
-`my-auth` / `my-usermanager` are pinned for COMPAT alignment; passkey login and account/admin user routes are not wired in this host yet (admin access remains `PUNKRECORDS_ADMIN_TOKEN`). Chart.js is loaded through `app_factory.cdn` as an optional product extra.
+Passkey login and account/admin user routes are not wired in this host yet (admin access remains `PUNKRECORDS_ADMIN_TOKEN`). Chart.js is loaded through `app_factory.cdn` as an optional product extra.
+
+### HTTP dependency audit
+
+`uv.lock` pins production FastAPI `0.143.2` and `punkrecords[dev] → httpx2 2.13.1 → httpcore2 2.13.1 → h11 0.16.0`; HTTPX2 also requires `truststore 0.10.5`. Registry: `https://pypi.org/simple`, with locked hashes. On Emscripten, `httpx2-jsfetch 1.0` replaces AnyIO, HTTPCore2 and truststore.
+
+No `httpx`, `httpcore`, `requests` or `urllib3` found in `platform`, `fastapi-htmx`, `myauth`, transitive `app-factory[fastapi]`, or `dev`, including platform markers. Unselected extras (`standard`) and other resolutions are excluded. Production `uvicorn 0.54.0 → h11` is not a legacy client.
 
 ## Development
 
