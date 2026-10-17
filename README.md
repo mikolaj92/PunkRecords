@@ -39,27 +39,29 @@ After the proxy starts, open the operator dashboard at `http://127.0.0.1:4141/` 
 
 The operator dashboard uses the shared app-factory product shell (Basecoat + HTMX + Alpine) from same-origin `/static/platform/...`. Host templates extend `app_factory/product_shell.html` and supply menu data only — no forked sidebar/header/theme chrome.
 
-BOM pins follow [app-factory `COMPAT.md`](https://github.com/mikolaj92/app-factory/blob/v0.6.22/COMPAT.md):
+Platform dependencies are pinned in `pyproject.toml`:
 
 | Package | Tag |
 |---------|-----|
-| app-factory | `v0.6.22` |
-| my-auth | `v0.5.4` |
-| my-usermanager | `v0.6.5` |
+| app-factory | `v0.7.9` |
+| my-auth | `v0.5.7` |
+| my-usermanager | `v0.6.10` |
 
-`my-auth` / `my-usermanager` are pinned for COMPAT alignment; passkey login and account/admin user routes are not wired in this host yet (admin access remains `PUNKRECORDS_ADMIN_TOKEN`). Chart.js is loaded through `app_factory.cdn` as an optional product extra.
+Passkey login and account/admin user routes are not wired in this host (admin access remains `PUNKRECORDS_ADMIN_TOKEN`). Chart.js is loaded through `app_factory.cdn` as an optional product extra.
 
 ## Development
 
+Use `httpx2` without `httpx`, compatibility aliases, or fallbacks.
+
 ```bash
-uv sync --extra dev
-uv run pytest
+uv sync --locked --extra dev
+uv run --locked pytest
 ```
 
 You can also run without installing:
 
 ```bash
-uv run punkrecords proxy --host 0.0.0.0 --port 4141
+uv run --locked punkrecords proxy --host 0.0.0.0 --port 4141
 ```
 
 ## Storage
@@ -89,12 +91,6 @@ Route-specific overrides win over the base. There is no legacy `PUNKRECORDS_OPEN
 The proxy server is implemented with FastAPI and served through Uvicorn.
 
 PunkRecords is designed to behave primarily as a self-contained proxy server, so the default runtime state stays inside the repo under `./.punkrecords/`.
-
-Run:
-
-```bash
-uv run punkrecords proxy --host 0.0.0.0 --port 4141
-```
 
 The operator dashboard is served at `GET /` (for the default bind, `http://127.0.0.1:4141/`). JSON admin routes remain under `/_proxy/admin/`.
 
