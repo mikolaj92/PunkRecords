@@ -8,11 +8,7 @@ This project keeps provider credentials, failover state, and proxy telemetry in 
 - serving the operator dashboard at `GET /` plus admin/state/settings JSON APIs,
 - routing requests across provider credential pools,
 
-## Why this exists
-
-PunkRecords keeps provider logins, failover state, and proxy telemetry together under one local runtime root while exposing a single proxy surface for traffic.
-
-The old text-mode TUI has been removed. The CLI is now limited to starting the server; administration happens through the operator dashboard at `GET /` and the proxy/admin JSON API.
+The CLI starts the server; administration happens through the operator dashboard and admin JSON API.
 
 ## Current scope
 
@@ -49,23 +45,15 @@ Git sources (`pyproject.toml` → `uv.lock`):
 
 Passkey login and account/admin user routes are not wired in this host yet (admin access remains `PUNKRECORDS_ADMIN_TOKEN`). Chart.js is loaded through `app_factory.cdn` as an optional product extra.
 
-### HTTP dependency audit
+### HTTP stack
 
-`uv.lock` pins production FastAPI `0.143.2` and `punkrecords[dev] → httpx2 2.13.1 → httpcore2 2.13.1 → h11 0.16.0`; HTTPX2 also requires `truststore 0.10.5`. Registry: `https://pypi.org/simple`, with locked hashes. On Emscripten, `httpx2-jsfetch 1.0` replaces AnyIO, HTTPCore2 and truststore.
-
-No `httpx`, `httpcore`, `requests` or `urllib3` found in `platform`, `fastapi-htmx`, `myauth`, transitive `app-factory[fastapi]`, or `dev`, including platform markers. Unselected extras (`standard`) and other resolutions are excluded. Production `uvicorn 0.54.0 → h11` is not a legacy client.
+FastAPI serves the application through Uvicorn. Upstream requests use Python's standard-library `urllib.request`; HTTPX2 belongs to the optional `dev` dependencies, not the production transport.
 
 ## Development
 
 ```bash
-uv sync --extra dev
-uv run pytest
-```
-
-You can also run without installing:
-
-```bash
-uv run punkrecords proxy --host 0.0.0.0 --port 4141
+uv sync --locked --extra dev
+uv run --locked --extra dev pytest
 ```
 
 ## Storage
@@ -77,7 +65,7 @@ By default the project stores its state in:
 - `./.punkrecords/stats/proxy-rollups.json`
 - `./.punkrecords/stats/proxy-requests.jsonl`
 
-You can override that root directory with the new primary environment variable:
+Override the state directory with:
 
 - `PUNKRECORDS_HOME=/path/to/home`
 
@@ -93,16 +81,6 @@ Route-specific overrides win over the base. There is no legacy `PUNKRECORDS_OPEN
 ## Local proxy
 
 The proxy server is implemented with FastAPI and served through Uvicorn.
-
-PunkRecords is designed to behave primarily as a self-contained proxy server, so the default runtime state stays inside the repo under `./.punkrecords/`.
-
-Run:
-
-```bash
-uv run punkrecords proxy --host 0.0.0.0 --port 4141
-```
-
-The operator dashboard is served at `GET /` (for the default bind, `http://127.0.0.1:4141/`). JSON admin routes remain under `/_proxy/admin/`.
 
 FastAPI also exposes built-in API docs and schema when the proxy is running:
 
