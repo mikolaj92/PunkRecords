@@ -5,14 +5,8 @@ PunkRecords is a self-contained local proxy runtime with plugin-based provider s
 This project keeps provider credentials, failover state, and proxy telemetry in its own local store and exposes a server surface for:
 
 - running a local OpenAI-compatible failover proxy for supported routes,
-- serving the operator dashboard at `GET /` plus admin/state/settings JSON APIs,
+- serving a dashboard at `GET /` for proxy state, traffic, accounts, and settings, plus admin JSON APIs,
 - routing requests across provider credential pools,
-
-## Why this exists
-
-PunkRecords keeps provider logins, failover state, and proxy telemetry together under one local runtime root while exposing a single proxy surface for traffic.
-
-The old text-mode TUI has been removed. The CLI is now limited to starting the server; administration happens through the operator dashboard at `GET /` and the proxy/admin JSON API.
 
 ## Current scope
 
@@ -20,7 +14,6 @@ Version `0.1.0` ships with one built-in provider plugin:
 
 - built-in provider: `openai-codex`
 - auth type: OAuth logins, not API keys
-- server-oriented workflow with the operator dashboard at `GET /` plus admin JSON APIs
 - staged OpenAI-compatible proxy support for selected routes
 
 The provider system itself is plugin-based. Built-in plugins live in the repository under the `providers/` package, and external plugins can be loaded by setting:
@@ -71,7 +64,7 @@ By default the project stores its state in:
 - `./.punkrecords/stats/proxy-rollups.json`
 - `./.punkrecords/stats/proxy-requests.jsonl`
 
-You can override that root directory with the new primary environment variable:
+You can override that root directory with:
 
 - `PUNKRECORDS_HOME=/path/to/home`
 
@@ -87,16 +80,6 @@ Route-specific overrides win over the base. There is no legacy `PUNKRECORDS_OPEN
 ## Local proxy
 
 The proxy server is implemented with FastAPI and served through Uvicorn.
-
-PunkRecords is designed to behave primarily as a self-contained proxy server, so the default runtime state stays inside the repo under `./.punkrecords/`.
-
-Run:
-
-```bash
-uv run punkrecords proxy --host 0.0.0.0 --port 4141
-```
-
-The operator dashboard is served at `GET /` (for the default bind, `http://127.0.0.1:4141/`). JSON admin routes remain under `/_proxy/admin/`.
 
 FastAPI also exposes built-in API docs and schema when the proxy is running:
 
