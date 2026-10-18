@@ -8,12 +8,6 @@ This project keeps provider credentials, failover state, and proxy telemetry in 
 - serving the operator dashboard at `GET /` plus admin/state/settings JSON APIs,
 - routing requests across provider credential pools,
 
-## Why this exists
-
-PunkRecords keeps provider logins, failover state, and proxy telemetry together under one local runtime root while exposing a single proxy surface for traffic.
-
-The old text-mode TUI has been removed. The CLI is now limited to starting the server; administration happens through the operator dashboard at `GET /` and the proxy/admin JSON API.
-
 ## Current scope
 
 Version `0.1.0` ships with one built-in provider plugin:
@@ -39,15 +33,9 @@ After the proxy starts, open the operator dashboard at `http://127.0.0.1:4141/` 
 
 The operator dashboard uses the shared app-factory product shell (Basecoat + HTMX + Alpine) from same-origin `/static/platform/...`. Host templates extend `app_factory/product_shell.html` and supply menu data only — no forked sidebar/header/theme chrome.
 
-BOM pins follow [app-factory `COMPAT.md`](https://github.com/mikolaj92/app-factory/blob/v0.6.22/COMPAT.md):
+Platform dependency pins are defined in `pyproject.toml`.
 
-| Package | Tag |
-|---------|-----|
-| app-factory | `v0.6.22` |
-| my-auth | `v0.5.4` |
-| my-usermanager | `v0.6.5` |
-
-`my-auth` / `my-usermanager` are pinned for COMPAT alignment; passkey login and account/admin user routes are not wired in this host yet (admin access remains `PUNKRECORDS_ADMIN_TOKEN`). Chart.js is loaded through `app_factory.cdn` as an optional product extra.
+Passkey login and account/admin user routes are not wired in this host (admin access uses `PUNKRECORDS_ADMIN_TOKEN`). Chart.js is loaded through `app_factory.cdn` as an optional product extra.
 
 ## Development
 
@@ -89,14 +77,6 @@ Route-specific overrides win over the base. There is no legacy `PUNKRECORDS_OPEN
 The proxy server is implemented with FastAPI and served through Uvicorn.
 
 PunkRecords is designed to behave primarily as a self-contained proxy server, so the default runtime state stays inside the repo under `./.punkrecords/`.
-
-Run:
-
-```bash
-uv run punkrecords proxy --host 0.0.0.0 --port 4141
-```
-
-The operator dashboard is served at `GET /` (for the default bind, `http://127.0.0.1:4141/`). JSON admin routes remain under `/_proxy/admin/`.
 
 FastAPI also exposes built-in API docs and schema when the proxy is running:
 
