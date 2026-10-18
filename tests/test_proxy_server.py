@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import importlib
+import importlib.metadata
 import json
 import re
 import socket
+import sys
 import threading
 import time
+import types
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -266,6 +269,9 @@ def test_proxy_models_endpoint(monkeypatch, tmp_path):
 
 
 def test_proxy_openapi_docs_and_dashboard(monkeypatch, tmp_path):
+    assert importlib.metadata.version("httpx2")
+    with pytest.raises(importlib.metadata.PackageNotFoundError):
+        importlib.metadata.version("httpx")
     monkeypatch.setenv("PUNKRECORDS_HOME", str(tmp_path / "manager"))
     repo = AccountRepository()
     repo.upsert_account(_account(1, "work"), make_active=True)
@@ -380,6 +386,8 @@ def test_proxy_openapi_docs_and_dashboard(monkeypatch, tmp_path):
             settings_html = response.read().decode()
         assert "Save settings" in settings_html
         assert "<body" not in settings_html.lower()
+        assert "httpx" not in sys.modules
+        assert not any(name.startswith("httpx.") for name in tuple(sys.modules))
     finally:
         server.shutdown()
         server.server_close()
@@ -544,8 +552,6 @@ def test_dashboard_accounts_device_flow_uses_existing_oauth_helpers(
 
 
 def test_proxy_can_fallback_across_providers(monkeypatch, tmp_path):
-    import sys
-    import types
     from dataclasses import dataclass
 
     monkeypatch.setenv("PUNKRECORDS_HOME", str(tmp_path / "manager"))
@@ -740,8 +746,6 @@ def test_proxy_can_fallback_across_providers(monkeypatch, tmp_path):
 
 
 def test_proxy_request_transform_plugin_runs_before_upstream(monkeypatch, tmp_path):
-    import sys
-    import types
     from dataclasses import dataclass
 
     monkeypatch.setenv("PUNKRECORDS_HOME", str(tmp_path / "manager"))
@@ -962,8 +966,6 @@ def test_proxy_request_transform_plugin_runs_before_upstream(monkeypatch, tmp_pa
 
 
 def test_apply_request_transforms_orders_plugins_and_collects_metrics(monkeypatch):
-    import sys
-    import types
     from dataclasses import dataclass
 
     transforms_module = importlib.import_module("punkrecords.transforms")
@@ -1071,8 +1073,6 @@ def test_apply_request_transforms_orders_plugins_and_collects_metrics(monkeypatc
 
 
 def test_apply_request_transforms_fail_open_continues(monkeypatch):
-    import sys
-    import types
     from dataclasses import dataclass
 
     transforms_module = importlib.import_module("punkrecords.transforms")
@@ -1132,8 +1132,6 @@ def test_apply_request_transforms_fail_open_continues(monkeypatch):
 
 
 def test_proxy_request_transform_fail_closed_returns_error(monkeypatch, tmp_path):
-    import sys
-    import types
     from dataclasses import dataclass
 
     monkeypatch.setenv("PUNKRECORDS_HOME", str(tmp_path / "manager"))
