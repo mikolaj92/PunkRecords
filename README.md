@@ -5,10 +5,8 @@ PunkRecords is a self-contained local proxy runtime with plugin-based provider s
 This project keeps provider credentials, failover state, and proxy telemetry in its own local store and exposes a server surface for:
 
 - running a local OpenAI-compatible failover proxy for supported routes,
-- serving the operator dashboard at `GET /` plus admin/state/settings JSON APIs,
+- serving a dashboard at `GET /` for proxy state, traffic, accounts, and settings, plus admin JSON APIs,
 - routing requests across provider credential pools,
-
-The CLI starts the server; administration happens through the operator dashboard and admin JSON API.
 
 ## Current scope
 
@@ -16,7 +14,6 @@ Version `0.1.0` ships with one built-in provider plugin:
 
 - built-in provider: `openai-codex`
 - auth type: OAuth logins, not API keys
-- server-oriented workflow with the operator dashboard at `GET /` plus admin JSON APIs
 - staged OpenAI-compatible proxy support for selected routes
 
 The provider system itself is plugin-based. Built-in plugins live in the repository under the `providers/` package, and external plugins can be loaded by setting:
@@ -35,25 +32,27 @@ After the proxy starts, open the operator dashboard at `http://127.0.0.1:4141/` 
 
 The operator dashboard uses the shared app-factory product shell (Basecoat + HTMX + Alpine) from same-origin `/static/platform/...`. Host templates extend `app_factory/product_shell.html` and supply menu data only — no forked sidebar/header/theme chrome.
 
-Git sources (`pyproject.toml` → `uv.lock`):
+BOM pins follow [app-factory `COMPAT.md`](https://github.com/mikolaj92/app-factory/blob/v0.6.22/COMPAT.md):
 
-| Repository (`github.com/mikolaj92/`) | Tag | Locked commit |
-|------------------------------------|-----|---------------|
-| app-factory | `v0.7.9` | `eea39ae621eefe6a681f905a954abe016aef724b` |
-| my-auth | `v0.5.7` | `bd0775f1993299b27d2bbd785dd252821dbff06e` |
-| my-usermanager | `v0.6.10` | `1844d41e0caad5a458a16bc16d3dcc54444b35fc` |
+| Package | Tag |
+|---------|-----|
+| app-factory | `v0.6.22` |
+| my-auth | `v0.5.4` |
+| my-usermanager | `v0.6.5` |
 
-Passkey login and account/admin user routes are not wired in this host yet (admin access remains `PUNKRECORDS_ADMIN_TOKEN`). Chart.js is loaded through `app_factory.cdn` as an optional product extra.
-
-### HTTP stack
-
-FastAPI serves the application through Uvicorn. Upstream requests use Python's standard-library `urllib.request`; HTTPX2 belongs to the optional `dev` dependencies, not the production transport.
+`my-auth` / `my-usermanager` are pinned for COMPAT alignment; passkey login and account/admin user routes are not wired in this host yet (admin access remains `PUNKRECORDS_ADMIN_TOKEN`). Chart.js is loaded through `app_factory.cdn` as an optional product extra.
 
 ## Development
 
 ```bash
-uv sync --locked --extra dev
-uv run --locked --extra dev pytest
+uv sync --extra dev
+uv run pytest
+```
+
+You can also run without installing:
+
+```bash
+uv run punkrecords proxy --host 0.0.0.0 --port 4141
 ```
 
 ## Storage
@@ -65,7 +64,7 @@ By default the project stores its state in:
 - `./.punkrecords/stats/proxy-rollups.json`
 - `./.punkrecords/stats/proxy-requests.jsonl`
 
-Override the state directory with:
+You can override that root directory with:
 
 - `PUNKRECORDS_HOME=/path/to/home`
 
