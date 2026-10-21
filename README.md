@@ -32,15 +32,13 @@ After the proxy starts, open the operator dashboard at `http://127.0.0.1:4141/` 
 
 The operator dashboard uses the shared app-factory product shell (Basecoat + HTMX + Alpine) from same-origin `/static/platform/...`. Host templates extend `app_factory/product_shell.html` and supply menu data only — no forked sidebar/header/theme chrome.
 
-BOM pins follow [app-factory `COMPAT.md`](https://github.com/mikolaj92/app-factory/blob/v0.6.22/COMPAT.md):
+`pyproject.toml` and `uv.lock` pin Git sources: `app-factory[platform]` at `v0.7.9`, `my-auth[fastapi-htmx]` at `v0.5.7`, and `my-usermanager[fastapi-htmx,myauth]` at `v0.6.10`; the lock records their commit hashes.
 
-| Package | Tag |
-|---------|-----|
-| app-factory | `v0.6.22` |
-| my-auth | `v0.5.4` |
-| my-usermanager | `v0.6.5` |
+FastAPI `0.143.2` comes from `https://pypi.org/simple`. Its immediate parents are PunkRecords, `app-factory[platform]`, `app-factory[fastapi]`, `my-auth[fastapi-htmx]`, and `my-usermanager[fastapi-htmx]`. Both `fastapi-htmx` extras require `app-factory[fastapi]`; `my-usermanager[myauth]` also requires `my-auth`. Starlette `1.6.0` comes from the same registry. Its immediate parents are FastAPI and the `fastapi` / `platform` extras of app-factory, linking it to all three Git dependencies and the direct FastAPI requirement.
 
-`my-auth` / `my-usermanager` are pinned for COMPAT alignment; passkey login and account/admin user routes are not wired in this host yet (admin access remains `PUNKRECORDS_ADMIN_TOKEN`). Chart.js is loaded through `app_factory.cdn` as an optional product extra.
+The development extra alone requires HTTPX2 `2.13.1`; it requires HTTPCore2 `2.13.1` when `sys_platform != 'emscripten'`, or `httpx2-jsfetch` `1.0` when `sys_platform == 'emscripten'`. All three come from the same registry; neither FastAPI nor Starlette has a recorded edge to them.
+
+All package records and dependency branches in `uv.lock` contain no legacy `httpx` or `httpcore`. This verifies lockfile provenance only, not installed packages or upstream metadata; no legacy parent or remediation is needed within that scope. Passkey login and account/admin user routes are not wired in this host yet (admin access remains `PUNKRECORDS_ADMIN_TOKEN`). Chart.js is loaded through `app_factory.cdn` as an optional product extra.
 
 ## Development
 
